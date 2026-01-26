@@ -1,0 +1,174 @@
+-- GQL Use Case: Supply Chain Management
+-- CANARY: REQ=REQ-USECASE-SUPPLY-001; FEATURE="SupplyChain"; ASPECT=UseCase; STATUS=TESTED
+--
+-- This example demonstrates supply chain patterns from the documentation.
+-- Source: Use Cases - Supply Chain
+
+-- ============================================================================
+-- SETUP: Create Supply Chain Data
+-- ============================================================================
+
+-- Create suppliers
+CREATE (s1:Supplier {id: 'sup1', name: 'Raw Materials Inc', country: 'China', tier: 1});
+CREATE (s2:Supplier {id: 'sup2', name: 'Components Ltd', country: 'Taiwan', tier: 2});
+CREATE (s3:Supplier {id: 'sup3', name: 'Electronics Corp', country: 'Japan', tier: 2});
+CREATE (s4:Supplier {id: 'sup4', name: 'Assembly Partners', country: 'Vietnam', tier: 3});
+
+-- Create warehouses
+CREATE (w1:Warehouse {id: 'wh1', name: 'West Coast Hub', location: 'Los Angeles', capacity: 10000});
+CREATE (w2:Warehouse {id: 'wh2', name: 'East Coast Hub', location: 'New Jersey', capacity: 15000});
+CREATE (w3:Warehouse {id: 'wh3', name: 'Central Hub', location: 'Chicago', capacity: 8000});
+
+-- Create products
+CREATE (p1:Product {id: 'prod1', name: 'Smartphone', sku: 'PHN-001', price: 799});
+CREATE (p2:Product {id: 'prod2', name: 'Laptop', sku: 'LPT-001', price: 1299});
+CREATE (p3:Product {id: 'prod3', name: 'Tablet', sku: 'TBL-001', price: 599});
+
+-- Create components
+CREATE (c1:Component {id: 'comp1', name: 'Display Panel', type: 'electronic'});
+CREATE (c2:Component {id: 'comp2', name: 'Battery', type: 'electronic'});
+CREATE (c3:Component {id: 'comp3', name: 'Processor', type: 'electronic'});
+CREATE (c4:Component {id: 'comp4', name: 'Casing', type: 'mechanical'});
+
+-- Create distribution centers
+CREATE (d1:DistributionCenter {id: 'dc1', name: 'Regional DC West', region: 'West'});
+CREATE (d2:DistributionCenter {id: 'dc2', name: 'Regional DC East', region: 'East'});
+
+-- Create supply relationships
+MATCH (s:Supplier {id: 'sup1'}), (c:Component {id: 'comp4'})
+CREATE (s)-[:SUPPLIES {lead_time_days: 14, min_order: 1000}]->(c);
+
+MATCH (s:Supplier {id: 'sup2'}), (c:Component {id: 'comp1'})
+CREATE (s)-[:SUPPLIES {lead_time_days: 21, min_order: 500}]->(c);
+
+MATCH (s:Supplier {id: 'sup2'}), (c:Component {id: 'comp2'})
+CREATE (s)-[:SUPPLIES {lead_time_days: 18, min_order: 500}]->(c);
+
+MATCH (s:Supplier {id: 'sup3'}), (c:Component {id: 'comp3'})
+CREATE (s)-[:SUPPLIES {lead_time_days: 28, min_order: 200}]->(c);
+
+-- Products contain components
+MATCH (p:Product {id: 'prod1'}), (c:Component {id: 'comp1'})
+CREATE (p)-[:CONTAINS {quantity: 1}]->(c);
+
+MATCH (p:Product {id: 'prod1'}), (c:Component {id: 'comp2'})
+CREATE (p)-[:CONTAINS {quantity: 1}]->(c);
+
+MATCH (p:Product {id: 'prod1'}), (c:Component {id: 'comp3'})
+CREATE (p)-[:CONTAINS {quantity: 1}]->(c);
+
+MATCH (p:Product {id: 'prod1'}), (c:Component {id: 'comp4'})
+CREATE (p)-[:CONTAINS {quantity: 1}]->(c);
+
+-- Warehouse inventory
+MATCH (w:Warehouse {id: 'wh1'}), (p:Product {id: 'prod1'})
+CREATE (w)-[:STORES {quantity: 500, last_updated: date('2026-01-15')}]->(p);
+
+MATCH (w:Warehouse {id: 'wh2'}), (p:Product {id: 'prod1'})
+CREATE (w)-[:STORES {quantity: 750, last_updated: date('2026-01-15')}]->(p);
+
+-- Distribution flow
+MATCH (w:Warehouse {id: 'wh1'}), (d:DistributionCenter {id: 'dc1'})
+CREATE (w)-[:SHIPS_TO {transit_days: 2}]->(d);
+
+MATCH (w:Warehouse {id: 'wh2'}), (d:DistributionCenter {id: 'dc2'})
+CREATE (w)-[:SHIPS_TO {transit_days: 1}]->(d);
+
+-- ============================================================================
+-- SUPPLY CHAIN QUERIES
+-- ============================================================================
+
+-- 1. Bill of Materials (BOM): What components make up a product?
+MATCH (p:Product {name: 'Smartphone'})-[c:CONTAINS]->(comp:Component)
+RETURN
+    comp.name AS component,
+    comp.type AS type,
+    c.quantity AS quantity
+ORDER BY comp.name;
+
+-- 2. Supplier Analysis: Who supplies each component?
+MATCH (s:Supplier)-[sup:SUPPLIES]->(c:Component)
+RETURN
+    c.name AS component,
+    s.name AS supplier,
+    s.country AS country,
+    sup.lead_time_days AS lead_time,
+    sup.min_order AS minimum_order
+ORDER BY c.name, sup.lead_time_days;
+
+-- 3. Full Supply Chain Trace: Product -> Components -> Suppliers
+MATCH (p:Product {name: 'Smartphone'})-[:CONTAINS]->(c:Component)<-[sup:SUPPLIES]-(s:Supplier)
+RETURN
+    p.name AS product,
+    c.name AS component,
+    s.name AS supplier,
+    s.country AS origin_country,
+    sup.lead_time_days AS lead_time
+ORDER BY sup.lead_time_days DESC;
+
+-- 4. Critical Path Analysis: Longest lead time for product
+MATCH (p:Product {name: 'Smartphone'})-[:CONTAINS]->(c:Component)<-[sup:SUPPLIES]-(s:Supplier)
+WITH p, MAX(sup.lead_time_days) AS max_lead_time
+MATCH (p)-[:CONTAINS]->(c:Component)<-[sup:SUPPLIES]-(s:Supplier)
+WHERE sup.lead_time_days = max_lead_time
+RETURN
+    p.name AS product,
+    c.name AS bottleneck_component,
+    s.name AS supplier,
+    max_lead_time AS critical_lead_time_days;
+
+-- 5. Inventory Levels: Where are products stored?
+MATCH (w:Warehouse)-[st:STORES]->(p:Product)
+RETURN
+    p.name AS product,
+    w.name AS warehouse,
+    w.location AS location,
+    st.quantity AS stock_level,
+    w.capacity AS warehouse_capacity
+ORDER BY p.name, st.quantity DESC;
+
+-- 6. Total Inventory by Product
+MATCH (w:Warehouse)-[st:STORES]->(p:Product)
+RETURN
+    p.name AS product,
+    SUM(st.quantity) AS total_inventory,
+    COUNT(w) AS warehouse_count
+ORDER BY total_inventory DESC;
+
+-- 7. Distribution Network: Warehouse to DC flow
+MATCH (w:Warehouse)-[ship:SHIPS_TO]->(dc:DistributionCenter)
+OPTIONAL MATCH (w)-[st:STORES]->(p:Product)
+RETURN
+    w.name AS warehouse,
+    dc.name AS distribution_center,
+    ship.transit_days AS transit_time,
+    SUM(st.quantity) AS total_stock
+ORDER BY transit_time;
+
+-- 8. Supplier Risk: Single-source components
+MATCH (c:Component)<-[:SUPPLIES]-(s:Supplier)
+WITH c, COUNT(s) AS supplier_count, COLLECT(s.name) AS suppliers
+WHERE supplier_count = 1
+RETURN
+    c.name AS single_source_component,
+    suppliers[0] AS sole_supplier,
+    'HIGH RISK' AS risk_level;
+
+-- 9. Geographic Concentration Risk
+MATCH (s:Supplier)-[:SUPPLIES]->(c:Component)
+RETURN
+    s.country AS country,
+    COUNT(DISTINCT c) AS components_supplied,
+    COLLECT(DISTINCT c.name) AS component_list
+ORDER BY components_supplied DESC;
+
+-- 10. End-to-End Supply Chain Visibility
+MATCH path = (s:Supplier)-[:SUPPLIES]->(c:Component)<-[:CONTAINS]-(p:Product)
+              <-[:STORES]-(w:Warehouse)-[:SHIPS_TO]->(dc:DistributionCenter)
+RETURN
+    s.name AS supplier,
+    c.name AS component,
+    p.name AS product,
+    w.name AS warehouse,
+    dc.name AS distribution_center
+ORDER BY p.name, s.name;

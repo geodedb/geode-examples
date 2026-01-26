@@ -1,0 +1,69 @@
+-- GQL Indexing Example 005: Spatial Index (R-tree)
+-- CANARY: REQ=REQ-INDEX-SPATIAL-001; FEATURE="SpatialIndex"; ASPECT=Indexing; STATUS=TESTED
+--
+-- This example demonstrates R-tree spatial index for geographic queries.
+-- Verifies claim: "R-tree spatial index (geographic queries)"
+-- Source: Features Overview, Indexing Tutorial
+
+-- Create locations with coordinates
+CREATE (:Location {
+    name: 'Empire State Building',
+    coords: point({latitude: 40.7484, longitude: -73.9857})
+});
+
+CREATE (:Location {
+    name: 'Statue of Liberty',
+    coords: point({latitude: 40.6892, longitude: -74.0445})
+});
+
+CREATE (:Location {
+    name: 'Central Park',
+    coords: point({latitude: 40.7829, longitude: -73.9654})
+});
+
+CREATE (:Location {
+    name: 'Brooklyn Bridge',
+    coords: point({latitude: 40.7061, longitude: -73.9969})
+});
+
+CREATE (:Location {
+    name: 'Times Square',
+    coords: point({latitude: 40.7580, longitude: -73.9855})
+});
+
+-- Create R-tree spatial index
+CREATE INDEX location_coords_spatial ON Location(coords) USING spatial;
+
+-- Find locations within distance (in kilometers)
+WITH point({latitude: 40.7484, longitude: -73.9857}) AS reference
+MATCH (l:Location)
+WHERE distanceKm(l.coords, reference) < 5
+RETURN l.name, distanceKm(l.coords, reference) AS distance_km
+ORDER BY distance_km;
+
+-- Find locations within bounding box
+MATCH (l:Location)
+WHERE l.coords.latitude >= 40.70 AND l.coords.latitude <= 40.80
+  AND l.coords.longitude >= -74.00 AND l.coords.longitude <= -73.95
+RETURN l.name, l.coords;
+
+-- Find nearest N locations
+WITH point({latitude: 40.7580, longitude: -73.9855}) AS times_square
+MATCH (l:Location)
+RETURN l.name, distanceKm(l.coords, times_square) AS distance_km
+ORDER BY distance_km
+LIMIT 3;
+
+-- Haversine distance calculation
+WITH point({latitude: 40.7484, longitude: -73.9857}) AS empire_state
+MATCH (l:Location)
+WHERE l.name <> 'Empire State Building'
+RETURN l.name, distanceKm(l.coords, empire_state) AS haversine_km
+ORDER BY haversine_km;
+
+-- Explain spatial query
+EXPLAIN
+WITH point({latitude: 40.7484, longitude: -73.9857}) AS reference
+MATCH (l:Location)
+WHERE distanceKm(l.coords, reference) < 5
+RETURN l.name;

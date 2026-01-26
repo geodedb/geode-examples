@@ -1,0 +1,79 @@
+-- GQL Basic Example 007: Filtering and WHERE Clauses
+-- CANARY: REQ=REQ-GQL-FILTER-001; FEATURE="Filtering"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates various filtering techniques.
+-- Source: GQL Guide, Features Overview
+
+-- Simple equality filter
+MATCH (p:Person)
+WHERE p.name = 'Alice'
+RETURN p.name, p.age;
+
+-- Comparison operators
+MATCH (p:Person)
+WHERE p.age > 25
+RETURN p.name, p.age
+ORDER BY p.age;
+
+MATCH (p:Person)
+WHERE p.age >= 30
+RETURN p.name, p.age;
+
+MATCH (p:Person)
+WHERE p.age < 30
+RETURN p.name, p.age;
+
+-- AND condition
+MATCH (p:Person)
+WHERE p.age > 25 AND p.city = 'NYC'
+RETURN p.name, p.age, p.city;
+
+-- OR condition
+MATCH (p:Person)
+WHERE p.city = 'NYC' OR p.city = 'LA'
+RETURN p.name, p.city;
+
+-- NOT condition
+MATCH (p:Person)
+WHERE NOT p.city = 'NYC'
+RETURN p.name, p.city;
+
+-- Complex boolean logic
+MATCH (p:Person)
+WHERE (p.age > 25 AND p.city = 'NYC') OR (p.age < 30 AND p.city = 'LA')
+RETURN p.name, p.age, p.city;
+
+-- IN clause
+MATCH (p:Person)
+WHERE p.city IN ['NYC', 'LA', 'Chicago']
+RETURN p.name, p.city;
+
+-- BETWEEN (using range)
+MATCH (p:Person)
+WHERE p.age >= 25 AND p.age <= 35
+RETURN p.name, p.age;
+
+-- String matching with STARTS WITH
+MATCH (p:Person)
+WHERE p.name STARTS WITH 'A'
+RETURN p.name;
+
+-- String matching with CONTAINS
+MATCH (p:Person)
+WHERE p.name CONTAINS 'o'
+RETURN p.name;
+
+-- String matching with ENDS WITH
+MATCH (p:Person)
+WHERE p.name ENDS WITH 'e'
+RETURN p.name;
+
+-- IS NULL check
+MATCH (p:Person)
+WHERE p.email IS NULL
+RETURN p.name;
+
+-- IS NOT NULL check
+MATCH (p:Person)
+WHERE p.city IS NOT NULL
+RETURN p.name, p.city;

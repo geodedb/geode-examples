@@ -1,0 +1,26 @@
+-- GQL Basic Example 002: Create Nodes
+-- CANARY: REQ=REQ-GQL-CREATE-001; FEATURE="NodeCreation"; ASPECT=DataMutation; STATUS=TESTED
+--
+-- This example demonstrates creating nodes with labels and properties.
+-- Verifies claim: "Nodes with multiple labels" from Features Overview
+
+-- Create a simple node with one label
+CREATE (p:Person {name: 'Alice', age: 30});
+
+-- Create a node with multiple labels
+-- Verifies claim: "Nodes with multiple labels"
+CREATE (e:Person:Employee {
+    name: 'Bob',
+    age: 25,
+    email: 'bob@example.com',
+    department: 'Engineering'
+});
+
+-- Create multiple nodes in a single statement
+CREATE (c:Company {name: 'Acme Corp', founded: 2010}),
+       (d:Department {name: 'Engineering', budget: 1000000});
+
+-- Verify nodes were created
+MATCH (n)
+RETURN labels(n) AS labels, n.name AS name
+ORDER BY n.name;

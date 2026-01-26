@@ -1,0 +1,53 @@
+-- GQL Advanced Example 002: Set Operations
+-- CANARY: REQ=REQ-GQL-SET-001; FEATURE="SetOperations"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates UNION, INTERSECT, and EXCEPT operations.
+-- Verifies claim: "Set operations (UNION, INTERSECT, EXCEPT)"
+-- Source: Features Overview
+
+-- UNION: Combine results from two queries (removes duplicates)
+MATCH (p:Person)
+WHERE p.city = 'NYC'
+RETURN p.name AS name, 'NYC resident' AS source
+UNION
+MATCH (p:Person)
+WHERE p.age > 30
+RETURN p.name AS name, 'Over 30' AS source;
+
+-- UNION ALL: Keep duplicates
+MATCH (p:Person)
+WHERE p.city = 'NYC'
+RETURN p.name AS name
+UNION ALL
+MATCH (p:Person)-[:KNOWS]->(:Person {city: 'NYC'})
+RETURN p.name AS name;
+
+-- INTERSECT: Common results only
+MATCH (p:Person)
+WHERE p.age > 25
+RETURN p.name AS name
+INTERSECT
+MATCH (p:Person)-[:KNOWS]->(:Person)
+RETURN p.name AS name;
+
+-- EXCEPT: Set difference (first minus second)
+MATCH (p:Person)
+RETURN p.name AS name
+EXCEPT
+MATCH (p:Person)
+WHERE p.city = 'NYC'
+RETURN p.name AS name;
+
+-- Complex set operation: People in NYC OR connected to someone in NYC
+-- but NOT over 35
+(
+    MATCH (p:Person {city: 'NYC'})
+    RETURN p.name AS name
+    UNION
+    MATCH (p:Person)-[:KNOWS]->(:Person {city: 'NYC'})
+    RETURN p.name AS name
+)
+EXCEPT
+MATCH (p:Person)
+WHERE p.age > 35
+RETURN p.name AS name;

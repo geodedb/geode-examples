@@ -1,0 +1,57 @@
+-- GQL Transaction Example 003: Isolation Levels
+-- CANARY: REQ=REQ-TXN-ISO-001; FEATURE="IsolationLevels"; ASPECT=Concurrency; STATUS=TESTED
+--
+-- This example demonstrates different transaction isolation levels.
+-- Verifies claim: "6 isolation levels (Read Uncommitted to Serializable)"
+-- Source: Features Overview
+
+-- READ UNCOMMITTED: Can see uncommitted changes from other transactions
+-- (Lowest isolation, highest concurrency)
+START TRANSACTION WITH ISOLATION LEVEL READ UNCOMMITTED;
+MATCH (a:Account)
+RETURN COUNT(a) AS account_count;
+COMMIT;
+
+-- READ COMMITTED: Only sees committed changes
+-- (Default in many databases)
+START TRANSACTION WITH ISOLATION LEVEL READ COMMITTED;
+MATCH (a:Account)
+WHERE a.balance > 500
+RETURN a.name, a.balance;
+COMMIT;
+
+-- REPEATABLE READ: Same query returns same results within transaction
+-- (Prevents non-repeatable reads)
+START TRANSACTION WITH ISOLATION LEVEL REPEATABLE READ;
+MATCH (a:Account)
+RETURN SUM(a.balance) AS total_balance;
+-- Same query would return same result even if other transactions commit
+MATCH (a:Account)
+RETURN SUM(a.balance) AS total_balance_again;
+COMMIT;
+
+-- SNAPSHOT: Point-in-time consistent view
+-- (Commonly used for reporting)
+START TRANSACTION WITH ISOLATION LEVEL SNAPSHOT;
+MATCH (a:Account)
+RETURN a.name, a.balance
+ORDER BY a.balance DESC;
+COMMIT;
+
+-- SERIALIZABLE: Highest isolation
+-- (Transactions execute as if serial)
+START TRANSACTION WITH ISOLATION LEVEL SERIALIZABLE;
+MATCH (a:Account)
+WHERE a.balance > 500
+WITH COUNT(a) AS high_balance_count
+WHERE high_balance_count > 0
+MATCH (a:Account)
+SET a.category = 'active';
+COMMIT;
+
+-- LINEARIZABLE: Strongest guarantees
+-- (Real-time ordering)
+START TRANSACTION WITH ISOLATION LEVEL LINEARIZABLE;
+MATCH (a:Account {name: 'Alice'})
+SET a.verified_at = timestamp();
+COMMIT;

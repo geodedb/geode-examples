@@ -1,0 +1,40 @@
+# Prometheus configuration for Geode monitoring
+# Used with docker-compose.yml monitoring profile
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Geode server metrics
+  - job_name: 'geode'
+    static_configs:
+      - targets: ['geode:9090']
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Geode secure instance (if running)
+  - job_name: 'geode-secure'
+    static_configs:
+      - targets: ['geode-secure:9090']
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Docker containers (if using cAdvisor)
+  # - job_name: 'cadvisor'
+  #   static_configs:
+  #     - targets: ['cadvisor:8080']

@@ -1,0 +1,46 @@
+-- GQL Indexing Example 006: All Index Types Summary
+-- CANARY: REQ=REQ-INDEX-ALL-001; FEATURE="AllIndexTypes"; ASPECT=Indexing; STATUS=TESTED
+--
+-- This example demonstrates all 6 index types claimed by Geode.
+-- Verifies claim: "6 Index Types for Optimal Performance"
+-- Source: Features Overview
+
+-- INDEX TYPE 1: B-tree (range queries, ordering)
+CREATE INDEX idx_btree_example ON Person(age) USING btree;
+-- Use cases: age > 30, ORDER BY age, BETWEEN queries
+
+-- INDEX TYPE 2: Hash (exact matches)
+CREATE INDEX idx_hash_example ON Person(email) USING hash;
+-- Use cases: email = 'alice@example.com', id lookups
+
+-- INDEX TYPE 3: Full-text (BM25 ranking)
+CREATE INDEX idx_fulltext_example ON Article(content) USING fulltext;
+-- Use cases: CONTAINS 'search terms', text search
+
+-- INDEX TYPE 4: Vector/HNSW (similarity search)
+CREATE INDEX idx_vector_example ON Document(embedding) USING vector;
+-- Use cases: nearest neighbor, similarity search
+
+-- INDEX TYPE 5: Spatial/R-tree (geographic queries)
+CREATE INDEX idx_spatial_example ON Location(coords) USING spatial;
+-- Use cases: distance queries, bounding box
+
+-- INDEX TYPE 6: Patricia Trie (prefix matching, IP addresses)
+CREATE INDEX idx_trie_example ON Device(ip_address) USING trie;
+-- Use cases: IP prefix matching, CIDR queries
+
+-- Summary table of when to use each index
+-- | Index Type | Best For | Example Query |
+-- |------------|----------|---------------|
+-- | B-tree | Range queries, sorting | WHERE age > 30 |
+-- | Hash | Exact equality | WHERE email = 'x' |
+-- | Full-text | Text search | WHERE content CONTAINS 'x' |
+-- | Vector | Similarity search | ORDER BY distance(v1, v2) |
+-- | R-tree | Geographic | WHERE distance < 10km |
+-- | Trie | Prefix/IP matching | WHERE ip IN subnet |
+
+-- List all indexes (if supported)
+-- SHOW INDEXES;
+
+-- Drop index example
+-- DROP INDEX idx_btree_example;

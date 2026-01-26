@@ -1,0 +1,34 @@
+-- GQL Indexing Example 002: Hash Index
+-- CANARY: REQ=REQ-INDEX-HASH-001; FEATURE="HashIndex"; ASPECT=Indexing; STATUS=TESTED
+--
+-- This example demonstrates Hash index creation and usage.
+-- Verifies claim: "Hash index (exact matches)"
+-- Source: Features Overview, Indexing Tutorial
+
+-- Create Hash index on Person.email (good for exact lookups)
+CREATE INDEX person_email_hash ON Person(email) USING hash;
+
+-- Create Hash index on Account.id
+CREATE INDEX account_id_hash ON Account(id) USING hash;
+
+-- Query that uses hash index for exact match
+MATCH (p:Person)
+WHERE p.email = 'alice@example.com'
+RETURN p.name, p.email;
+
+-- Hash index is optimal for equality comparisons
+MATCH (a:Account)
+WHERE a.id = 'A001'
+RETURN a.name, a.balance;
+
+-- Explain to verify index usage
+EXPLAIN
+MATCH (p:Person)
+WHERE p.email = 'alice@example.com'
+RETURN p.name;
+
+-- Note: Hash indexes do NOT help with:
+-- - Range queries (WHERE age > 30)
+-- - LIKE/pattern matching
+-- - ORDER BY operations
+-- Use B-tree for those cases

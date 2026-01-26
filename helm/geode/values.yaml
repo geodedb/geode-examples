@@ -1,0 +1,187 @@
+# Default values for Geode Helm chart
+# This is a YAML-formatted file.
+
+# Number of Geode replicas (for HA, use 3+)
+replicaCount: 1
+
+image:
+  repository: geodedb/geode
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 3141
+  metricsPort: 9090
+  annotations: {}
+
+# Ingress configuration (for QUIC, requires QUIC-capable ingress controller)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: geode.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 4
+    memory: 8Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Autoscaling configuration
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Persistence configuration
+persistence:
+  enabled: true
+  # Storage class name (empty uses default)
+  storageClass: ""
+  # Access modes
+  accessModes:
+    - ReadWriteOnce
+  # Size of the persistent volume
+  size: 100Gi
+  # Annotations for the PVC
+  annotations: {}
+
+# WAL storage (separate volume for performance)
+walPersistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+
+# Geode server configuration
+config:
+  server:
+    listen: "0.0.0.0:3141"
+    metricsListen: "0.0.0.0:9090"
+    maxConnections: 10000
+    connectionTimeout: "30s"
+    idleTimeout: "5m"
+
+  storage:
+    dataDir: "/var/lib/geode/data"
+    walDir: "/var/lib/geode/wal"
+    pageSize: 8192
+    pageCacheSize: "2GB"
+    walBufferSize: "16MB"
+    walSyncInterval: "100ms"
+    compression: "zstd"
+
+  security:
+    tdeEnabled: false
+    tlsEnabled: true
+    tlsCertFile: "/certs/tls.crt"
+    tlsKeyFile: "/certs/tls.key"
+    authEnabled: false
+
+  logging:
+    level: "info"
+    format: "json"
+
+# TLS certificate configuration
+tls:
+  # Use existing secret for TLS certificates
+  existingSecret: ""
+  # Or create certificates (requires cert-manager)
+  certManager:
+    enabled: false
+    issuerRef:
+      name: letsencrypt-prod
+      kind: ClusterIssuer
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: "30s"
+    scrapeTimeout: "10s"
+    labels: {}
+
+# Liveness and readiness probes
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+# Extra environment variables
+extraEnvVars: []
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []
+
+# Init containers
+initContainers: []
+
+# Sidecar containers
+sidecars: []

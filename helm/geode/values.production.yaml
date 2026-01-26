@@ -1,0 +1,79 @@
+# Production values for Geode Helm chart
+# Apply with: helm install geode ./helm/geode -f ./helm/geode/values.production.yaml
+
+replicaCount: 3
+
+resources:
+  limits:
+    cpu: 8
+    memory: 32Gi
+  requests:
+    cpu: 4
+    memory: 16Gi
+
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"
+  size: 500Gi
+
+walPersistence:
+  enabled: true
+  storageClass: "fast-ssd"
+  size: 100Gi
+
+config:
+  server:
+    maxConnections: 10000
+    connectionTimeout: "30s"
+    idleTimeout: "5m"
+
+  storage:
+    pageCacheSize: "16GB"
+    walBufferSize: "64MB"
+    walSyncInterval: "50ms"
+    compression: "zstd"
+
+  security:
+    tdeEnabled: true
+    tlsEnabled: true
+    authEnabled: true
+
+  logging:
+    level: "warn"
+    format: "json"
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: "15s"
+
+livenessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  failureThreshold: 5
+
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - geode
+        topologyKey: "kubernetes.io/hostname"
+
+tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "database"
+    effect: "NoSchedule"
+
+nodeSelector:
+  workload-type: database

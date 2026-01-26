@@ -1,0 +1,22 @@
+apiVersion: v2
+name: geode
+description: Enterprise-ready graph database with 100% ISO/IEC 39075:2024 GQL compliance
+type: application
+version: 0.1.0
+appVersion: "0.18.0"
+home: https://geodedb.com
+sources:
+  - https://gitlab.com/devnw/codepros/geode
+keywords:
+  - graph
+  - database
+  - gql
+  - iso-39075
+  - property-graph
+  - quic
+maintainers:
+  - name: CodePros
+    email: support@codepros.org
+annotations:
+  category: Database
+  licenses: Apache-2.0

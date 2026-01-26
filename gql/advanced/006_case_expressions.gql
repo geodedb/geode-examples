@@ -1,0 +1,70 @@
+-- GQL Advanced Example 006: CASE Expressions
+-- CANARY: REQ=REQ-GQL-CASE-001; FEATURE="CaseExpressions"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates CASE expressions for conditional logic.
+-- Source: GQL Guide
+
+-- Simple CASE expression
+MATCH (p:Person)
+RETURN p.name,
+    CASE p.city
+        WHEN 'NYC' THEN 'East Coast'
+        WHEN 'LA' THEN 'West Coast'
+        WHEN 'Chicago' THEN 'Midwest'
+        ELSE 'Other'
+    END AS region;
+
+-- Searched CASE expression
+MATCH (p:Person)
+RETURN p.name, p.age,
+    CASE
+        WHEN p.age < 25 THEN 'Young'
+        WHEN p.age < 35 THEN 'Adult'
+        WHEN p.age < 50 THEN 'Middle-aged'
+        ELSE 'Senior'
+    END AS age_group;
+
+-- CASE with aggregation result
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+WITH p, COUNT(friend) AS friend_count
+RETURN p.name,
+    CASE
+        WHEN friend_count = 0 THEN 'Loner'
+        WHEN friend_count = 1 THEN 'Has one friend'
+        WHEN friend_count <= 3 THEN 'Social'
+        ELSE 'Very popular'
+    END AS social_status;
+
+-- Nested CASE
+MATCH (p:Person)
+RETURN p.name,
+    CASE
+        WHEN p.city = 'NYC' THEN
+            CASE
+                WHEN p.age > 30 THEN 'NYC Senior'
+                ELSE 'NYC Junior'
+            END
+        ELSE 'Not from NYC'
+    END AS category;
+
+-- CASE in ORDER BY
+MATCH (p:Person)
+RETURN p.name, p.city
+ORDER BY
+    CASE p.city
+        WHEN 'NYC' THEN 1
+        WHEN 'LA' THEN 2
+        ELSE 3
+    END;
+
+-- CASE with NULL handling
+MATCH (p:Person)
+RETURN p.name,
+    CASE
+        WHEN p.email IS NULL THEN 'No email'
+        ELSE p.email
+    END AS email_status;
+
+-- COALESCE as shorthand for NULL CASE
+MATCH (p:Person)
+RETURN p.name, COALESCE(p.email, 'No email') AS email;

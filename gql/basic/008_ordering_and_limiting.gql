@@ -1,0 +1,46 @@
+-- GQL Basic Example 008: Ordering and Limiting Results
+-- CANARY: REQ=REQ-GQL-ORDER-001; FEATURE="OrderingLimiting"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates ORDER BY, LIMIT, and SKIP clauses.
+-- Source: GQL Guide
+
+-- ORDER BY ascending (default)
+MATCH (p:Person)
+RETURN p.name, p.age
+ORDER BY p.age;
+
+-- ORDER BY descending
+MATCH (p:Person)
+RETURN p.name, p.age
+ORDER BY p.age DESC;
+
+-- ORDER BY multiple columns
+MATCH (p:Person)
+RETURN p.name, p.city, p.age
+ORDER BY p.city ASC, p.age DESC;
+
+-- LIMIT results
+MATCH (p:Person)
+RETURN p.name, p.age
+ORDER BY p.age DESC
+LIMIT 2;
+
+-- SKIP for pagination
+MATCH (p:Person)
+RETURN p.name, p.age
+ORDER BY p.name
+SKIP 1
+LIMIT 2;
+
+-- Combining ORDER BY with aggregations
+MATCH (p:Person)
+RETURN p.city, COUNT(p) AS count
+GROUP BY p.city
+ORDER BY count DESC
+LIMIT 3;
+
+-- Top N pattern
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+RETURN p.name, COUNT(friend) AS friend_count
+ORDER BY friend_count DESC
+LIMIT 3;

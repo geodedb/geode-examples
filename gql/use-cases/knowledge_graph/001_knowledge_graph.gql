@@ -1,0 +1,162 @@
+-- GQL Use Case: Knowledge Graph
+-- CANARY: REQ=REQ-USECASE-KG-001; FEATURE="KnowledgeGraph"; ASPECT=UseCase; STATUS=TESTED
+--
+-- This example demonstrates knowledge graph patterns from the documentation.
+-- Source: Use Cases - Knowledge Graphs
+
+-- ============================================================================
+-- SETUP: Create Knowledge Graph Data (Company/Technology Domain)
+-- ============================================================================
+
+-- Create companies
+CREATE (google:Company {name: 'Google', founded: 1998, industry: 'Technology'});
+CREATE (apple:Company {name: 'Apple', founded: 1976, industry: 'Technology'});
+CREATE (microsoft:Company {name: 'Microsoft', founded: 1975, industry: 'Technology'});
+CREATE (amazon:Company {name: 'Amazon', founded: 1994, industry: 'E-commerce'});
+
+-- Create technologies
+CREATE (python:Technology {name: 'Python', type: 'Programming Language', year: 1991});
+CREATE (go:Technology {name: 'Go', type: 'Programming Language', year: 2009});
+CREATE (rust:Technology {name: 'Rust', type: 'Programming Language', year: 2010});
+CREATE (k8s:Technology {name: 'Kubernetes', type: 'Infrastructure', year: 2014});
+CREATE (tf:Technology {name: 'TensorFlow', type: 'ML Framework', year: 2015});
+CREATE (pytorch:Technology {name: 'PyTorch', type: 'ML Framework', year: 2016});
+
+-- Create people
+CREATE (guido:Person {name: 'Guido van Rossum', born: 1956, role: 'Creator'});
+CREATE (pike:Person {name: 'Rob Pike', born: 1956, role: 'Creator'});
+CREATE (sundar:Person {name: 'Sundar Pichai', born: 1972, role: 'CEO'});
+CREATE (satya:Person {name: 'Satya Nadella', born: 1967, role: 'CEO'});
+
+-- Create concepts
+CREATE (ml:Concept {name: 'Machine Learning', domain: 'AI'});
+CREATE (cloud:Concept {name: 'Cloud Computing', domain: 'Infrastructure'});
+CREATE (oss:Concept {name: 'Open Source', domain: 'Software'});
+
+-- Create relationships
+MATCH (g:Company {name: 'Google'}), (go:Technology {name: 'Go'})
+CREATE (g)-[:CREATED {year: 2009}]->(go);
+
+MATCH (g:Company {name: 'Google'}), (k8s:Technology {name: 'Kubernetes'})
+CREATE (g)-[:CREATED {year: 2014}]->(k8s);
+
+MATCH (g:Company {name: 'Google'}), (tf:Technology {name: 'TensorFlow'})
+CREATE (g)-[:CREATED {year: 2015}]->(tf);
+
+MATCH (m:Company {name: 'Microsoft'}), (py:Person {name: 'Guido van Rossum'})
+CREATE (m)-[:EMPLOYS {since: 2020}]->(py);
+
+MATCH (g:Company {name: 'Google'}), (s:Person {name: 'Sundar Pichai'})
+CREATE (g)-[:EMPLOYS {since: 2004}]->(s);
+
+MATCH (m:Company {name: 'Microsoft'}), (n:Person {name: 'Satya Nadella'})
+CREATE (m)-[:EMPLOYS {since: 1992}]->(n);
+
+MATCH (guido:Person {name: 'Guido van Rossum'}), (python:Technology {name: 'Python'})
+CREATE (guido)-[:INVENTED]->(python);
+
+MATCH (pike:Person {name: 'Rob Pike'}), (go:Technology {name: 'Go'})
+CREATE (pike)-[:INVENTED]->(go);
+
+MATCH (tf:Technology {name: 'TensorFlow'}), (ml:Concept {name: 'Machine Learning'})
+CREATE (tf)-[:IMPLEMENTS]->(ml);
+
+MATCH (pytorch:Technology {name: 'PyTorch'}), (ml:Concept {name: 'Machine Learning'})
+CREATE (pytorch)-[:IMPLEMENTS]->(ml);
+
+MATCH (k8s:Technology {name: 'Kubernetes'}), (cloud:Concept {name: 'Cloud Computing'})
+CREATE (k8s)-[:ENABLES]->(cloud);
+
+MATCH (python:Technology {name: 'Python'}), (oss:Concept {name: 'Open Source'})
+CREATE (python)-[:IS_A]->(oss);
+
+MATCH (go:Technology {name: 'Go'}), (oss:Concept {name: 'Open Source'})
+CREATE (go)-[:IS_A]->(oss);
+
+-- ============================================================================
+-- KNOWLEDGE GRAPH QUERIES
+-- ============================================================================
+
+-- 1. Entity Exploration: What did Google create?
+MATCH (g:Company {name: 'Google'})-[:CREATED]->(tech:Technology)
+RETURN tech.name AS technology, tech.type AS type, tech.year AS year
+ORDER BY tech.year;
+
+-- 2. Relationship Traversal: Who works at which company and what did they create?
+MATCH (company:Company)-[:EMPLOYS]->(person:Person)-[:INVENTED]->(tech:Technology)
+RETURN
+    company.name AS employer,
+    person.name AS employee,
+    tech.name AS invention;
+
+-- 3. Concept Navigation: Find all technologies implementing ML
+MATCH (tech:Technology)-[:IMPLEMENTS]->(concept:Concept {name: 'Machine Learning'})
+RETURN tech.name AS ml_technology, tech.type AS type;
+
+-- 4. Inference Chain: Company -> Employee -> Invention -> Concept
+MATCH (company:Company)-[:EMPLOYS]->(person:Person)-[:INVENTED]->(tech:Technology)-[:IS_A]->(concept:Concept)
+RETURN
+    company.name AS company,
+    person.name AS person,
+    tech.name AS technology,
+    concept.name AS concept_category;
+
+-- 5. Multi-Hop Discovery: What concepts are related to Google?
+MATCH (g:Company {name: 'Google'})-[:CREATED]->(tech:Technology)-[r]->(concept:Concept)
+RETURN
+    tech.name AS technology,
+    type(r) AS relationship,
+    concept.name AS related_concept;
+
+-- 6. Path Finding: How is Python related to Google?
+MATCH path = shortestPath(
+    (python:Technology {name: 'Python'})-[*]-(google:Company {name: 'Google'})
+)
+RETURN
+    length(path) AS path_length,
+    [n IN nodes(path) |
+        CASE
+            WHEN n:Technology THEN n.name
+            WHEN n:Company THEN n.name
+            WHEN n:Person THEN n.name
+            WHEN n:Concept THEN n.name
+            ELSE 'unknown'
+        END
+    ] AS path_entities;
+
+-- 7. Aggregate Knowledge: Technology count by company
+MATCH (company:Company)-[:CREATED]->(tech:Technology)
+RETURN
+    company.name AS company,
+    COUNT(tech) AS technologies_created,
+    COLLECT(tech.name) AS technology_list
+ORDER BY technologies_created DESC;
+
+-- 8. Cross-Domain Query: Open source ML frameworks
+MATCH (tech:Technology)-[:IMPLEMENTS]->(ml:Concept {name: 'Machine Learning'})
+OPTIONAL MATCH (tech)-[:IS_A]->(oss:Concept {name: 'Open Source'})
+RETURN
+    tech.name AS framework,
+    CASE WHEN oss IS NOT NULL THEN 'Yes' ELSE 'No' END AS is_open_source;
+
+-- 9. Timeline Query: Technologies by year
+MATCH (tech:Technology)
+WHERE tech.year IS NOT NULL
+RETURN tech.name AS technology, tech.year AS year, tech.type AS type
+ORDER BY tech.year;
+
+-- 10. Network Analysis: Most connected entities
+MATCH (n)-[r]-()
+WITH n, COUNT(r) AS connections
+WHERE connections > 1
+RETURN
+    CASE
+        WHEN n:Technology THEN 'Technology: ' + n.name
+        WHEN n:Company THEN 'Company: ' + n.name
+        WHEN n:Person THEN 'Person: ' + n.name
+        WHEN n:Concept THEN 'Concept: ' + n.name
+        ELSE 'Unknown'
+    END AS entity,
+    connections
+ORDER BY connections DESC
+LIMIT 10;

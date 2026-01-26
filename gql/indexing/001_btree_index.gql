@@ -1,0 +1,41 @@
+-- GQL Indexing Example 001: B-tree Index
+-- CANARY: REQ=REQ-INDEX-BTREE-001; FEATURE="BtreeIndex"; ASPECT=Indexing; STATUS=TESTED
+--
+-- This example demonstrates B-tree index creation and usage.
+-- Verifies claim: "B-tree index (range queries, ordering)"
+-- Source: Features Overview, Indexing Tutorial
+
+-- Create B-tree index on Person.age
+CREATE INDEX person_age_btree ON Person(age) USING btree;
+
+-- Create composite B-tree index
+CREATE INDEX person_city_age_btree ON Person(city, age) USING btree;
+
+-- Show indexes (if supported)
+-- SHOW INDEXES;
+
+-- Query that uses the index for range query
+MATCH (p:Person)
+WHERE p.age > 25 AND p.age < 40
+RETURN p.name, p.age
+ORDER BY p.age;
+
+-- Query that uses index for equality + range
+MATCH (p:Person)
+WHERE p.city = 'NYC' AND p.age > 30
+RETURN p.name, p.city, p.age;
+
+-- Query that uses index for ordering
+MATCH (p:Person)
+RETURN p.name, p.age
+ORDER BY p.age DESC
+LIMIT 10;
+
+-- Explain to verify index usage
+EXPLAIN
+MATCH (p:Person)
+WHERE p.age > 25 AND p.age < 40
+RETURN p.name, p.age;
+
+-- Drop index example
+-- DROP INDEX person_age_btree;

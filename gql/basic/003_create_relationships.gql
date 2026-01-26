@@ -1,0 +1,21 @@
+-- GQL Basic Example 003: Create Relationships
+-- CANARY: REQ=REQ-GQL-REL-001; FEATURE="RelationshipCreation"; ASPECT=DataMutation; STATUS=TESTED
+--
+-- This example demonstrates creating relationships between nodes.
+-- Verifies claim: "Typed relationships with properties" from Features Overview
+
+-- Create nodes and relationship in one statement
+CREATE (alice:Person {name: 'Alice'})-[:KNOWS {since: 2020}]->(bob:Person {name: 'Bob'});
+
+-- Create relationship between existing nodes
+MATCH (a:Person {name: 'Alice'}), (c:Company {name: 'Acme Corp'})
+CREATE (a)-[:WORKS_AT {role: 'Engineer', start_date: date('2021-01-15')}]->(c);
+
+-- Create bidirectional relationships
+MATCH (alice:Person {name: 'Alice'}), (bob:Person {name: 'Bob'})
+CREATE (bob)-[:KNOWS {since: 2020}]->(alice);
+
+-- Verify relationships
+MATCH (a:Person)-[r]->(b)
+RETURN a.name AS from, type(r) AS relationship, b.name AS to, r AS properties
+ORDER BY a.name, type(r);

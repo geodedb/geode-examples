@@ -1,0 +1,150 @@
+# Geode Examples - Full Test Environment
+#
+# This compose file sets up a complete test environment including:
+# - Geode server
+# - Benchmark runner
+# - Test harness
+# - Monitoring stack
+#
+# Usage:
+#   docker compose -f docker/docker-compose.test.yml up -d
+#   docker compose -f docker/docker-compose.test.yml run test-harness
+#   docker compose -f docker/docker-compose.test.yml down -v
+
+version: '3.8'
+
+services:
+  # Geode Database Server (primary)
+  geode:
+    build:
+      context: ../../geode
+      dockerfile: ../geode-examples/docker/Dockerfile.geode
+    image: geodedb/geode:test
+    container_name: geode-test-server
+    ports:
+      - "3141:3141"
+      - "9090:9090"
+    volumes:
+      - geode-test-data:/var/lib/geode
+      - ../configs/server/development.yaml:/etc/geode/geode.yaml:ro
+    environment:
+      - GEODE_LOG_LEVEL=debug
+    healthcheck:
+      test: ["CMD", "geode", "shell", "-c", "RETURN 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - geode-test-network
+
+  # Geode with TDE enabled (for security tests)
+  geode-secure:
+    build:
+      context: ../../geode
+      dockerfile: ../geode-examples/docker/Dockerfile.geode
+    image: geodedb/geode:test
+    container_name: geode-test-secure
+    ports:
+      - "3142:3141"
+      - "9092:9090"
+    volumes:
+      - geode-secure-data:/var/lib/geode
+      - ../configs/server/security-hardened.yaml:/etc/geode/geode.yaml:ro
+      - ../certs:/certs:ro
+    environment:
+      - GEODE_LOG_LEVEL=debug
+      - GEODE_TDE_KEY_FILE=/certs/tde.key
+    healthcheck:
+      test: ["CMD", "geode", "shell", "-c", "RETURN 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - geode-test-network
+    profiles:
+      - security
+
+  # Benchmark Runner
+  benchmark:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.benchmark
+    image: geode-benchmark:test
+    container_name: geode-test-benchmark
+    depends_on:
+      geode:
+        condition: service_healthy
+    volumes:
+      - ../benchmarks:/benchmarks:ro
+      - benchmark-results:/results
+    environment:
+      - GEODE_HOST=geode:3141
+      - BENCHMARK_DURATION=60
+      - BENCHMARK_CONCURRENCY=100
+    networks:
+      - geode-test-network
+
+  # Test Harness
+  test-harness:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test-harness
+    image: geode-test-harness:test
+    container_name: geode-test-harness
+    depends_on:
+      geode:
+        condition: service_healthy
+    volumes:
+      - ../gql:/workspace/gql:ro
+      - ../verification:/workspace/verification:ro
+      - ../clients:/workspace/clients:ro
+      - test-reports:/workspace/reports
+    environment:
+      - GEODE_HOST=geode:3141
+      - GEODE_SECURE_HOST=geode-secure:3141
+      - PYTEST_ARGS=-v --tb=short
+    networks:
+      - geode-test-network
+
+  # Prometheus for metrics during tests
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: geode-test-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ../configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - geode-test-network
+
+  # Kafka for CDC tests
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: geode-test-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: 'geode-test-cluster'
+    networks:
+      - geode-test-network
+    profiles:
+      - cdc
+
+volumes:
+  geode-test-data:
+  geode-secure-data:
+  benchmark-results:
+  test-reports:
+
+networks:
+  geode-test-network:
+    driver: bridge

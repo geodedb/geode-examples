@@ -1,0 +1,39 @@
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "geode.fullname" . }}-data
+  labels:
+    {{- include "geode.labels" . | nindent 4 }}
+  {{- with .Values.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+{{- end }}
+---
+{{- if .Values.walPersistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "geode.fullname" . }}-wal
+  labels:
+    {{- include "geode.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.walPersistence.accessModes | nindent 4 }}
+  {{- if .Values.walPersistence.storageClass }}
+  storageClassName: {{ .Values.walPersistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.walPersistence.size | quote }}
+{{- end }}

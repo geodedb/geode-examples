@@ -1,0 +1,166 @@
+-- GQL Use Case: Recommendation Engine
+-- CANARY: REQ=REQ-USECASE-RECOMMEND-001; FEATURE="Recommendations"; ASPECT=UseCase; STATUS=TESTED
+--
+-- This example demonstrates recommendation patterns from the documentation.
+-- Source: Use Cases - Recommendations
+
+-- ============================================================================
+-- SETUP: Create E-Commerce Data
+-- ============================================================================
+
+-- Create users
+CREATE (u1:User {id: 'user1', name: 'Alice', segment: 'premium'});
+CREATE (u2:User {id: 'user2', name: 'Bob', segment: 'standard'});
+CREATE (u3:User {id: 'user3', name: 'Carol', segment: 'premium'});
+CREATE (u4:User {id: 'user4', name: 'David', segment: 'standard'});
+
+-- Create products
+CREATE (p1:Product {id: 'prod1', name: 'Laptop', category: 'Electronics', price: 999});
+CREATE (p2:Product {id: 'prod2', name: 'Headphones', category: 'Electronics', price: 199});
+CREATE (p3:Product {id: 'prod3', name: 'Mouse', category: 'Electronics', price: 49});
+CREATE (p4:Product {id: 'prod4', name: 'Keyboard', category: 'Electronics', price: 79});
+CREATE (p5:Product {id: 'prod5', name: 'Monitor', category: 'Electronics', price: 399});
+CREATE (p6:Product {id: 'prod6', name: 'Book: Graph Databases', category: 'Books', price: 45});
+CREATE (p7:Product {id: 'prod7', name: 'Book: Data Science', category: 'Books', price: 55});
+
+-- Create purchases
+MATCH (u:User {id: 'user1'}), (p:Product {id: 'prod1'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-01'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user1'}), (p:Product {id: 'prod2'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-02'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user1'}), (p:Product {id: 'prod3'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-03'), quantity: 2}]->(p);
+
+MATCH (u:User {id: 'user2'}), (p:Product {id: 'prod1'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-05'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user2'}), (p:Product {id: 'prod4'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-06'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user2'}), (p:Product {id: 'prod5'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-07'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user3'}), (p:Product {id: 'prod2'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-10'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user3'}), (p:Product {id: 'prod6'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-11'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user4'}), (p:Product {id: 'prod6'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-15'), quantity: 1}]->(p);
+
+MATCH (u:User {id: 'user4'}), (p:Product {id: 'prod7'})
+CREATE (u)-[:PURCHASED {date: date('2026-01-16'), quantity: 1}]->(p);
+
+-- Create ratings
+MATCH (u:User {id: 'user1'}), (p:Product {id: 'prod1'})
+CREATE (u)-[:RATED {score: 5, date: date('2026-01-10')}]->(p);
+
+MATCH (u:User {id: 'user2'}), (p:Product {id: 'prod1'})
+CREATE (u)-[:RATED {score: 4, date: date('2026-01-12')}]->(p);
+
+-- ============================================================================
+-- RECOMMENDATION QUERIES
+-- ============================================================================
+
+-- 1. Collaborative Filtering: Users who bought this also bought
+-- Find products frequently bought together
+MATCH (u:User)-[:PURCHASED]->(p1:Product {id: 'prod1'})
+MATCH (u)-[:PURCHASED]->(p2:Product)
+WHERE p2.id <> 'prod1'
+RETURN
+    p2.name AS also_bought,
+    p2.category AS category,
+    COUNT(DISTINCT u) AS co_purchase_count
+ORDER BY co_purchase_count DESC
+LIMIT 5;
+
+-- 2. User-Based Collaborative Filtering
+-- Recommend products from similar users
+MATCH (me:User {id: 'user1'})-[:PURCHASED]->(common:Product)<-[:PURCHASED]-(similar:User)
+WHERE similar <> me
+WITH similar, COUNT(common) AS shared_purchases
+ORDER BY shared_purchases DESC
+LIMIT 3
+MATCH (similar)-[:PURCHASED]->(recommended:Product)
+WHERE NOT EXISTS {
+    MATCH (me:User {id: 'user1'})-[:PURCHASED]->(recommended)
+}
+RETURN DISTINCT
+    recommended.name AS recommendation,
+    recommended.category AS category,
+    COUNT(similar) AS recommended_by
+ORDER BY recommended_by DESC
+LIMIT 5;
+
+-- 3. Content-Based: Same Category Recommendations
+MATCH (me:User {id: 'user1'})-[:PURCHASED]->(bought:Product)
+WITH COLLECT(DISTINCT bought.category) AS my_categories, me
+MATCH (recommended:Product)
+WHERE recommended.category IN my_categories
+  AND NOT EXISTS {
+      MATCH (me)-[:PURCHASED]->(recommended)
+  }
+RETURN
+    recommended.name AS recommendation,
+    recommended.category AS category,
+    recommended.price AS price
+ORDER BY recommended.price DESC
+LIMIT 5;
+
+-- 4. Trending Products (Most Purchased Recently)
+MATCH (u:User)-[p:PURCHASED]->(product:Product)
+WHERE p.date > date('2026-01-01')
+RETURN
+    product.name AS trending_product,
+    product.category AS category,
+    COUNT(DISTINCT u) AS buyer_count
+ORDER BY buyer_count DESC
+LIMIT 5;
+
+-- 5. Highly Rated Products
+MATCH (u:User)-[r:RATED]->(product:Product)
+WITH product, AVG(r.score) AS avg_rating, COUNT(r) AS rating_count
+WHERE rating_count >= 1
+RETURN
+    product.name AS product,
+    avg_rating AS average_rating,
+    rating_count AS number_of_ratings
+ORDER BY avg_rating DESC, rating_count DESC
+LIMIT 5;
+
+-- 6. Personalized Recommendations by Segment
+MATCH (me:User {id: 'user1'})
+MATCH (similar:User {segment: me.segment})-[:PURCHASED]->(product:Product)
+WHERE similar <> me
+  AND NOT EXISTS {
+      MATCH (me)-[:PURCHASED]->(product)
+  }
+RETURN
+    product.name AS recommendation,
+    product.category AS category,
+    COUNT(DISTINCT similar) AS segment_popularity
+ORDER BY segment_popularity DESC
+LIMIT 5;
+
+-- 7. Bundle Recommendations (Frequently Bought Together)
+MATCH (u:User)-[:PURCHASED]->(p1:Product)-[:PURCHASED]-(u)-[:PURCHASED]->(p2:Product)
+WHERE p1.id < p2.id
+RETURN
+    p1.name AS product1,
+    p2.name AS product2,
+    COUNT(DISTINCT u) AS bundle_count
+ORDER BY bundle_count DESC
+LIMIT 5;
+
+-- 8. Cross-Category Exploration
+-- Users who bought electronics also bought these books
+MATCH (u:User)-[:PURCHASED]->(e:Product {category: 'Electronics'})
+MATCH (u)-[:PURCHASED]->(b:Product {category: 'Books'})
+RETURN
+    b.name AS book_recommendation,
+    COUNT(DISTINCT u) AS electronics_buyers_who_bought
+ORDER BY electronics_buyers_who_bought DESC
+LIMIT 5;

@@ -1,0 +1,14 @@
+-- GQL Basic Example 001: Hello World
+-- CANARY: REQ=REQ-GQL-001; FEATURE="BasicQuery"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates the simplest possible GQL query.
+-- It verifies that the Geode server is responding and can execute queries.
+
+-- Simple return statement
+RETURN 'Hello, Geode!' AS greeting;
+
+-- Return numeric value
+RETURN 1 + 1 AS result;
+
+-- Return with type
+RETURN 42 AS answer, 'Geode' AS database;

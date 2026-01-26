@@ -1,0 +1,36 @@
+-- GQL Basic Example 005: Variable-Length Paths
+-- CANARY: REQ=REQ-GQL-PATH-001; FEATURE="VariableLengthPaths"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates variable-length path queries.
+-- Verifies claim: "Variable-length paths (-[:TYPE*1..5]->)"
+-- Source: Features Overview
+
+-- Exact number of hops (2 hops)
+MATCH (start:Person {name: 'Alice'})-[:KNOWS*2]->(fof:Person)
+RETURN DISTINCT fof.name AS friend_of_friend;
+
+-- Range of hops (1 to 3)
+MATCH path = (start:Person {name: 'Alice'})-[:KNOWS*1..3]->(reachable:Person)
+RETURN reachable.name, length(path) AS hops
+ORDER BY hops, reachable.name;
+
+-- Variable-length with path extraction
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person)
+WHERE b.name = 'Dave'
+RETURN
+    length(path) AS distance,
+    [n IN nodes(path) | n.name] AS path_names;
+
+-- Find all reachable from Alice (any length up to 4)
+MATCH (start:Person {name: 'Alice'})-[:KNOWS*1..4]->(reachable:Person)
+WHERE reachable <> start
+RETURN DISTINCT reachable.name
+ORDER BY reachable.name;
+
+-- Shortest path pattern
+MATCH path = shortestPath(
+    (alice:Person {name: 'Alice'})-[:KNOWS*]-(dave:Person {name: 'Dave'})
+)
+RETURN
+    [node IN nodes(path) | node.name] AS path_names,
+    length(path) AS distance;

@@ -1,0 +1,49 @@
+-- GQL Advanced Example 007: EXPLAIN and PROFILE
+-- CANARY: REQ=REQ-GQL-EXPLAIN-001; FEATURE="ExplainProfile"; ASPECT=QueryAnalysis; STATUS=TESTED
+--
+-- This example demonstrates EXPLAIN and PROFILE for query optimization.
+-- Verifies claim: "EXPLAIN and PROFILE for query optimization"
+-- Source: Features Overview
+
+-- EXPLAIN: Show query execution plan without executing
+EXPLAIN
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+WHERE p.age > 25
+RETURN p.name, friend.name;
+
+-- EXPLAIN with aggregation
+EXPLAIN
+MATCH (p:Person)
+RETURN p.city, COUNT(p) AS count
+GROUP BY p.city
+ORDER BY count DESC;
+
+-- EXPLAIN with variable-length path
+EXPLAIN
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person)
+RETURN b.name, length(path);
+
+-- PROFILE: Execute and show actual metrics
+PROFILE
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+WHERE p.age > 25
+RETURN p.name, friend.name;
+
+-- PROFILE with index usage
+PROFILE
+MATCH (p:Person {name: 'Alice'})
+RETURN p.name, p.age;
+
+-- PROFILE complex query
+PROFILE
+MATCH (p:Person)
+WITH p.city AS city, COUNT(p) AS pop
+WHERE pop > 1
+RETURN city, pop
+ORDER BY pop DESC;
+
+-- EXPLAIN ANALYZE: Like PROFILE but with additional analysis
+EXPLAIN ANALYZE
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+WHERE p.age > 25
+RETURN p.name, friend.name;

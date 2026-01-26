@@ -1,0 +1,52 @@
+-- GQL Transaction Example 002: Savepoints
+-- CANARY: REQ=REQ-TXN-SAVE-001; FEATURE="Savepoints"; ASPECT=PartialRollback; STATUS=TESTED
+--
+-- This example demonstrates savepoint operations.
+-- Verifies claim: "Savepoints for partial rollback"
+-- Source: Features Overview
+
+-- Create base data
+START TRANSACTION;
+CREATE (:Order {id: 'ORD001', status: 'pending', total: 0});
+SAVEPOINT order_created;
+
+-- Add first item
+CREATE (:Item {id: 'ITEM001', name: 'Widget', price: 50});
+MATCH (o:Order {id: 'ORD001'}), (i:Item {id: 'ITEM001'})
+CREATE (o)-[:CONTAINS {quantity: 2}]->(i);
+SAVEPOINT item1_added;
+
+-- Add second item
+CREATE (:Item {id: 'ITEM002', name: 'Gadget', price: 100});
+MATCH (o:Order {id: 'ORD001'}), (i:Item {id: 'ITEM002'})
+CREATE (o)-[:CONTAINS {quantity: 1}]->(i);
+SAVEPOINT item2_added;
+
+-- Oops, rollback second item but keep first
+ROLLBACK TO SAVEPOINT item1_added;
+
+-- Calculate total and complete
+MATCH (o:Order {id: 'ORD001'})-[c:CONTAINS]->(i:Item)
+WITH o, SUM(c.quantity * i.price) AS calculated_total
+SET o.total = calculated_total, o.status = 'confirmed';
+
+COMMIT;
+
+-- Verify: Order should only contain Widget
+MATCH (o:Order {id: 'ORD001'})-[c:CONTAINS]->(i:Item)
+RETURN o.id, o.status, o.total, i.name, c.quantity;
+
+-- Nested savepoints example
+START TRANSACTION;
+SAVEPOINT sp1;
+CREATE (:Test {level: 1});
+SAVEPOINT sp2;
+CREATE (:Test {level: 2});
+SAVEPOINT sp3;
+CREATE (:Test {level: 3});
+ROLLBACK TO SAVEPOINT sp2;
+-- Only level 1 test should be committed
+COMMIT;
+
+MATCH (t:Test)
+RETURN t.level;

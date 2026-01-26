@@ -1,0 +1,103 @@
+# High-Performance Geode Configuration
+# Optimized for maximum throughput with performance-focused settings
+#
+# Target metrics (hardware dependent):
+# - Read-only: up to 100,000 txn/sec
+# - Read-write: 10,000-50,000 txn/sec
+# - Write-heavy: 5,000-20,000 txn/sec
+#
+# IMPORTANT: Requires adequate hardware:
+# - 32+ GB RAM (64+ GB recommended)
+# - Fast NVMe SSD storage
+# - 8+ CPU cores
+#
+# Start with: geode serve --config configs/server/high-performance.yaml
+
+server:
+  listen: "0.0.0.0:3141"
+  metrics_listen: "0.0.0.0:9090"
+  max_connections: 10000
+  connection_timeout: "30s"
+  idle_timeout: "10m"
+  # Worker threads (0 = auto-detect CPU cores)
+  worker_threads: 0
+
+storage:
+  data_dir: "/var/lib/geode/data"
+  # Place WAL on separate fast SSD for best performance
+  wal_dir: "/var/lib/geode/wal"
+  page_size: 8192
+  # Maximize page cache (50-75% of RAM)
+  page_cache_size: "16GB"
+  wal_buffer_size: "128MB"
+  # Async WAL sync for maximum throughput (trade-off: may lose last ~100ms on crash)
+  wal_sync_interval: "100ms"
+  compression: "zstd"
+  # Enable memory-mapped I/O (13.18x improvement claimed)
+  mmap_enabled: true
+  # Prefetch settings
+  prefetch_enabled: true
+  prefetch_size: "4MB"
+
+security:
+  # TDE disabled for maximum performance (enable if required)
+  # Claimed overhead: <1%
+  tde_enabled: false
+  auth_enabled: false
+
+query:
+  # Query optimizer settings
+  optimizer:
+    # Use parallel query execution
+    parallel_enabled: true
+    parallel_threshold: 1000  # Min rows for parallel execution
+    # Cost model tuning
+    seq_scan_cost: 1.0
+    index_scan_cost: 0.1
+    join_cost: 2.0
+    # Query plan cache
+    plan_cache_size: 10000
+    plan_cache_ttl: "1h"
+
+  # Prepared statement cache
+  prepared_cache_size: 5000
+
+  # Result set limits
+  max_result_rows: 1000000
+  max_query_memory: "1GB"
+
+# Index settings for performance
+indexing:
+  # HNSW vector index parameters for ~90% recall
+  hnsw_m: 16
+  hnsw_ef_construction: 200
+  hnsw_ef_search: 100
+
+  # B-tree settings
+  btree_fill_factor: 0.9
+
+  # Background index maintenance
+  maintenance_threads: 2
+  maintenance_interval: "1h"
+
+logging:
+  level: "warn"
+  format: "json"
+  # Disable query logging for performance
+  query_log_enabled: false
+
+monitoring:
+  prometheus_enabled: true
+  metrics_interval: "15s"
+  # Detailed performance metrics
+  detailed_metrics: true
+  histogram_buckets:
+    - 0.001  # 1ms
+    - 0.005  # 5ms
+    - 0.01   # 10ms
+    - 0.025  # 25ms
+    - 0.05   # 50ms
+    - 0.1    # 100ms
+    - 0.25   # 250ms
+    - 0.5    # 500ms
+    - 1.0    # 1s

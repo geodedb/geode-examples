@@ -1,0 +1,73 @@
+# Test Harness Container
+# Multi-language environment for running client tests and verification
+#
+# Build:
+#   docker build -f docker/Dockerfile.test-harness -t geode-test-harness:latest .
+
+FROM debian:bookworm-slim
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
+    ca-certificates \
+    gnupg \
+    xz-utils \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3.12
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go 1.24
+ARG GO_VERSION=1.24.0
+RUN curl -L "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV PATH="${GOPATH}/bin:${PATH}"
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Zig
+ARG ZIG_VERSION=0.15.1
+RUN curl -L "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" | tar -xJ -C /opt \
+    && ln -s /opt/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
+
+# Create test user
+RUN useradd -m -s /bin/bash tester
+
+WORKDIR /workspace
+
+# Copy all test files
+COPY . /workspace/
+
+# Install Python dependencies
+RUN pip3 install --break-system-packages --no-cache-dir \
+    pytest \
+    pytest-asyncio \
+    pytest-json-report \
+    aioquic \
+    httpx \
+    pyyaml \
+    rich \
+    click
+
+# Set ownership
+RUN chown -R tester:tester /workspace
+
+USER tester
+
+ENV GEODE_HOST=geode:3141
+ENV PYTHONUNBUFFERED=1
+
+# Default command runs all tests
+ENTRYPOINT ["/workspace/scripts/run_all_tests.sh"]

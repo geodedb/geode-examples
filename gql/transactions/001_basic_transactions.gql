@@ -1,0 +1,45 @@
+-- GQL Transaction Example 001: Basic Transactions
+-- CANARY: REQ=REQ-TXN-001; FEATURE="Transactions"; ASPECT=ACID; STATUS=TESTED
+--
+-- This example demonstrates basic transaction operations.
+-- Verifies claim: "ACID Compliance with MVCC"
+-- Source: Features Overview, Transaction Tutorial
+
+-- Basic transaction with COMMIT
+START TRANSACTION;
+CREATE (:Account {id: 'A001', name: 'Alice', balance: 1000});
+CREATE (:Account {id: 'A002', name: 'Bob', balance: 500});
+COMMIT;
+
+-- Verify accounts were created
+MATCH (a:Account)
+RETURN a.id, a.name, a.balance
+ORDER BY a.id;
+
+-- Transaction with ROLLBACK
+START TRANSACTION;
+CREATE (:Account {id: 'A003', name: 'Charlie', balance: 2000});
+ROLLBACK;
+
+-- Verify Charlie was NOT created
+MATCH (a:Account {id: 'A003'})
+RETURN a.name;
+
+-- Multi-statement transaction
+START TRANSACTION;
+MATCH (alice:Account {name: 'Alice'})
+SET alice.balance = alice.balance - 100;
+MATCH (bob:Account {name: 'Bob'})
+SET bob.balance = bob.balance + 100;
+COMMIT;
+
+-- Verify transfer
+MATCH (a:Account)
+RETURN a.name, a.balance
+ORDER BY a.name;
+
+-- BEGIN as alternative to START TRANSACTION
+BEGIN;
+MATCH (a:Account {name: 'Alice'})
+SET a.last_activity = timestamp();
+COMMIT;

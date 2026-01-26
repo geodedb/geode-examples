@@ -1,0 +1,43 @@
+# Benchmark Runner Container
+# Contains Python environment for running load tests and benchmarks
+#
+# Build:
+#   docker build -f docker/Dockerfile.benchmark -t geode-benchmark:latest .
+
+FROM python:3.12-slim-bookworm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create benchmark user
+RUN useradd -m -s /bin/bash benchmark
+
+WORKDIR /benchmarks
+
+# Install Python dependencies for benchmarking
+COPY benchmarks/requirements.txt /benchmarks/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy benchmark scripts
+COPY benchmarks/ /benchmarks/
+
+# Copy verification tools
+COPY verification/ /verification/
+
+# Set ownership
+RUN chown -R benchmark:benchmark /benchmarks /verification
+
+USER benchmark
+
+# Results directory
+VOLUME ["/results"]
+
+ENV GEODE_HOST=geode:3141
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python"]
+CMD ["--help"]

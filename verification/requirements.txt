@@ -1,0 +1,25 @@
+# Verification test dependencies
+# Install with: pip install -r verification/requirements.txt
+
+# Testing framework
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-xdist>=3.5.0      # Parallel test execution
+pytest-timeout>=2.2.0    # Test timeouts
+pytest-json-report>=1.5.0  # JSON test reports
+
+# Type hints
+typing-extensions>=4.9.0
+
+# Data handling
+pyyaml>=6.0
+
+# HTTP client (for webhook tests)
+httpx>=0.26.0
+
+# Async support
+anyio>=4.2.0
+
+# Reporting
+jinja2>=3.1.0           # HTML report templates
+rich>=13.7.0            # Console output formatting

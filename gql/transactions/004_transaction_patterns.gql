@@ -1,0 +1,78 @@
+-- GQL Transaction Example 004: Common Transaction Patterns
+-- CANARY: REQ=REQ-TXN-PATTERN-001; FEATURE="TransactionPatterns"; ASPECT=BestPractices; STATUS=TESTED
+--
+-- This example demonstrates common transaction patterns.
+-- Source: Transaction Tutorial
+
+-- Pattern 1: Atomic Transfer (All or Nothing)
+START TRANSACTION WITH ISOLATION LEVEL SERIALIZABLE;
+
+-- Check source has sufficient funds
+MATCH (source:Account {name: 'Alice'})
+WHERE source.balance >= 200
+WITH source
+
+-- Perform transfer
+MATCH (source:Account {name: 'Alice'})
+SET source.balance = source.balance - 200;
+
+MATCH (dest:Account {name: 'Bob'})
+SET dest.balance = dest.balance + 200;
+
+-- Log transaction
+CREATE (:Transfer {
+    from: 'Alice',
+    to: 'Bob',
+    amount: 200,
+    timestamp: timestamp()
+});
+
+COMMIT;
+
+-- Pattern 2: Read-Modify-Write with Optimistic Locking
+START TRANSACTION WITH ISOLATION LEVEL SERIALIZABLE;
+
+MATCH (a:Account {name: 'Alice'})
+WHERE a.version = 1  -- Check version hasn't changed
+SET a.balance = a.balance + 50,
+    a.version = a.version + 1;
+
+COMMIT;
+
+-- Pattern 3: Batch Insert with Savepoints
+START TRANSACTION;
+
+UNWIND [
+    {name: 'Product1', price: 100},
+    {name: 'Product2', price: 200},
+    {name: 'Product3', price: 300}
+] AS product
+
+CREATE (:Product {name: product.name, price: product.price});
+
+SAVEPOINT products_created;
+
+-- Create inventory records
+MATCH (p:Product)
+WHERE NOT EXISTS { MATCH (p)-[:HAS_INVENTORY]->() }
+CREATE (p)-[:HAS_INVENTORY]->(:Inventory {quantity: 0});
+
+COMMIT;
+
+-- Pattern 4: Conditional Commit
+START TRANSACTION;
+
+MATCH (o:Order {id: 'ORD001'})
+SET o.status = 'processing';
+
+-- Only commit if order total is valid
+MATCH (o:Order {id: 'ORD001'})
+WHERE o.total > 0
+WITH o
+SET o.processed_at = timestamp();
+
+COMMIT;
+
+-- Verify patterns worked
+MATCH (t:Transfer)
+RETURN t.from, t.to, t.amount;

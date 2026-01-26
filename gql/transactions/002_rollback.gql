@@ -1,0 +1,47 @@
+-- GQL Transaction Example 002: Rollback
+-- CANARY: REQ=REQ-TXN-ROLLBACK-001; FEATURE="TransactionRollback"; ASPECT=ACID; STATUS=TESTED
+--
+-- This example demonstrates transaction rollback.
+-- Verifies claim: "ACID Transactions" - Atomicity
+-- Source: Transactions Guide
+
+-- Get initial state
+MATCH (a:Account)
+RETURN a.name, a.balance AS initial_balance
+ORDER BY a.name;
+
+-- Start transaction that will be rolled back
+START TRANSACTION;
+
+-- Make some changes
+MATCH (alice:Account {name: 'Alice'})
+SET alice.balance = 0;
+
+MATCH (bob:Account {name: 'Bob'})
+SET bob.balance = 999999;
+
+-- Rollback - discard all changes
+ROLLBACK;
+
+-- Verify state is unchanged
+MATCH (a:Account)
+RETURN a.name, a.balance AS balance_after_rollback
+ORDER BY a.name;
+
+-- Transaction with conditional rollback
+START TRANSACTION;
+
+MATCH (alice:Account {name: 'Alice'})
+SET alice.balance = alice.balance - 5000;
+
+-- Check if overdraft
+MATCH (alice:Account {name: 'Alice'})
+WHERE alice.balance < 0
+-- This would trigger application-level rollback
+RETURN 'Insufficient funds - would rollback' AS status;
+
+ROLLBACK;
+
+-- Balance should be unchanged
+MATCH (a:Account {name: 'Alice'})
+RETURN a.balance;

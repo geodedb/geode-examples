@@ -1,0 +1,45 @@
+-- GQL Advanced Example 003: Subqueries
+-- CANARY: REQ=REQ-GQL-SUBQ-001; FEATURE="Subqueries"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates subqueries and EXISTS patterns.
+-- Verifies claim: "Subqueries and CTEs (WITH clauses)"
+-- Source: Features Overview
+
+-- EXISTS subquery: Find people who have friends
+MATCH (p:Person)
+WHERE EXISTS {
+    MATCH (p)-[:KNOWS]->(:Person)
+}
+RETURN p.name AS has_friends;
+
+-- NOT EXISTS: Find people without friends
+MATCH (p:Person)
+WHERE NOT EXISTS {
+    MATCH (p)-[:KNOWS]->(:Person)
+}
+RETURN p.name AS no_friends;
+
+-- EXISTS with condition
+MATCH (p:Person)
+WHERE EXISTS {
+    MATCH (p)-[:KNOWS]->(friend:Person)
+    WHERE friend.age > 30
+}
+RETURN p.name AS has_older_friends;
+
+-- Correlated subquery pattern
+MATCH (p:Person)
+WHERE p.age > (
+    MATCH (other:Person)
+    WHERE other.city = p.city
+    RETURN AVG(other.age)
+)
+RETURN p.name, p.age, p.city;
+
+-- COUNT in subquery
+MATCH (p:Person)
+WHERE (
+    MATCH (p)-[:KNOWS]->(:Person)
+    RETURN COUNT(*)
+) > 1
+RETURN p.name AS popular_people;

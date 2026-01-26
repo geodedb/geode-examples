@@ -1,0 +1,82 @@
+-- GQL Indexing Example 004: Vector Index (HNSW)
+-- CANARY: REQ=REQ-INDEX-VECTOR-001; FEATURE="VectorIndex"; ASPECT=Indexing; STATUS=TESTED
+--
+-- This example demonstrates HNSW vector index for similarity search.
+-- Verifies claims:
+--   - "HNSW index (Hierarchical Navigable Small World)"
+--   - "6 distance metrics (L1, L2, cosine, inner product, Hamming, Jaccard)"
+--   - "<50ns for 8D L2 distance"
+-- Source: Features Overview, Vector Search Tutorial
+
+-- Create documents with embedding vectors (8 dimensions)
+CREATE (:Document {
+    id: 'D001',
+    title: 'Machine Learning Basics',
+    embedding: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+});
+
+CREATE (:Document {
+    id: 'D002',
+    title: 'Deep Learning',
+    embedding: [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85]
+});
+
+CREATE (:Document {
+    id: 'D003',
+    title: 'Natural Language Processing',
+    embedding: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+});
+
+CREATE (:Document {
+    id: 'D004',
+    title: 'Database Systems',
+    embedding: [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
+});
+
+-- Create HNSW vector index with default parameters
+CREATE INDEX doc_embedding_hnsw ON Document(embedding) USING vector;
+
+-- Create HNSW vector index with custom parameters
+CREATE INDEX doc_embedding_tuned ON Document(embedding) USING vector
+WITH (
+    M = 16,                    -- Max connections per node
+    ef_construction = 200,     -- Search width during construction
+    ef_search = 100,           -- Search width at query time
+    distance_metric = 'L2'     -- Euclidean distance
+);
+
+-- Vector similarity search using L2 (Euclidean) distance
+-- Find documents similar to query vector
+WITH [0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82] AS query_vector
+MATCH (d:Document)
+RETURN d.title, euclideanDistance(d.embedding, query_vector) AS distance
+ORDER BY distance
+LIMIT 3;
+
+-- Cosine similarity search
+WITH [0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82] AS query_vector
+MATCH (d:Document)
+RETURN d.title, cosineSimilarity(d.embedding, query_vector) AS similarity
+ORDER BY similarity DESC
+LIMIT 3;
+
+-- K-Nearest Neighbors (KNN) search
+WITH [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] AS query_vector
+MATCH (d:Document)
+WHERE euclideanDistance(d.embedding, query_vector) < 0.5
+RETURN d.title, euclideanDistance(d.embedding, query_vector) AS distance
+ORDER BY distance;
+
+-- Approximate nearest neighbor with threshold
+WITH [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] AS query_vector
+MATCH (d:Document)
+WHERE cosineSimilarity(d.embedding, query_vector) > 0.9
+RETURN d.title;
+
+-- Explain vector search
+EXPLAIN
+WITH [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] AS query_vector
+MATCH (d:Document)
+RETURN d.title, euclideanDistance(d.embedding, query_vector) AS distance
+ORDER BY distance
+LIMIT 3;

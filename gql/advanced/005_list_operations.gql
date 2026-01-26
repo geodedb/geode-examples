@@ -1,0 +1,65 @@
+-- GQL Advanced Example 005: List Operations
+-- CANARY: REQ=REQ-GQL-LIST-001; FEATURE="ListOperations"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates list operations and comprehensions.
+-- Source: GQL Guide
+
+-- List literal
+RETURN [1, 2, 3, 4, 5] AS numbers;
+
+-- List of strings
+RETURN ['Alice', 'Bob', 'Carol'] AS names;
+
+-- Mixed type list
+RETURN [1, 'two', 3.0, true] AS mixed;
+
+-- COLLECT: Aggregate into list
+MATCH (p:Person)
+RETURN COLLECT(p.name) AS all_names;
+
+-- COLLECT with ordering
+MATCH (p:Person)
+WITH p
+ORDER BY p.age DESC
+RETURN COLLECT(p.name) AS names_by_age;
+
+-- UNWIND: Expand list to rows
+UNWIND [1, 2, 3] AS num
+RETURN num;
+
+-- UNWIND with MATCH
+UNWIND ['Alice', 'Bob'] AS name
+MATCH (p:Person {name: name})
+RETURN p.name, p.age;
+
+-- List comprehension
+MATCH (p:Person)
+RETURN [x IN COLLECT(p.name) WHERE x STARTS WITH 'A'] AS a_names;
+
+-- List comprehension with transformation
+MATCH (p:Person)
+RETURN [x IN COLLECT(p.age) | x * 2] AS doubled_ages;
+
+-- List indexing
+WITH ['a', 'b', 'c', 'd'] AS letters
+RETURN letters[0] AS first, letters[-1] AS last;
+
+-- List slicing
+WITH [1, 2, 3, 4, 5] AS nums
+RETURN nums[1..3] AS slice;
+
+-- SIZE of list
+MATCH (p:Person)
+RETURN SIZE(COLLECT(p.name)) AS person_count;
+
+-- HEAD and TAIL
+WITH [1, 2, 3, 4] AS nums
+RETURN HEAD(nums) AS first, TAIL(nums) AS rest;
+
+-- List concatenation
+RETURN [1, 2] + [3, 4] AS combined;
+
+-- IN operator with list
+MATCH (p:Person)
+WHERE p.city IN ['NYC', 'LA']
+RETURN p.name, p.city;

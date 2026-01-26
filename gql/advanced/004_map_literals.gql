@@ -1,0 +1,68 @@
+-- GQL Advanced Example 004: Map Literals and Deep Nesting
+-- CANARY: REQ=REQ-GQL-MAP-001; FEATURE="MapLiterals"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates map literals and nested data structures.
+-- Verifies claim: "Map literals and deep nesting (8+ levels)"
+-- Source: Features Overview
+
+-- Basic map literal
+RETURN {name: 'Alice', age: 30} AS person;
+
+-- Map with multiple types
+RETURN {
+    name: 'Alice',
+    age: 30,
+    active: true,
+    score: 95.5
+} AS mixed_map;
+
+-- Nested map (2 levels)
+RETURN {
+    person: {
+        name: 'Alice',
+        age: 30
+    },
+    address: {
+        city: 'NYC',
+        zip: '10001'
+    }
+} AS nested;
+
+-- Deep nesting (4+ levels)
+RETURN {
+    level1: {
+        level2: {
+            level3: {
+                level4: {
+                    value: 'deep'
+                }
+            }
+        }
+    }
+} AS deep_nested;
+
+-- Map from query results
+MATCH (p:Person)
+RETURN {
+    name: p.name,
+    age: p.age,
+    city: p.city
+} AS person_map
+ORDER BY p.name;
+
+-- List of maps
+MATCH (p:Person)
+WITH COLLECT({name: p.name, age: p.age}) AS people
+RETURN people;
+
+-- Map projection from node
+MATCH (p:Person {name: 'Alice'})
+RETURN p {.name, .age, .city} AS projection;
+
+-- Map with computed values
+MATCH (p:Person)
+RETURN {
+    name: p.name,
+    birth_year: 2026 - p.age,
+    is_adult: p.age >= 18
+} AS computed_map;

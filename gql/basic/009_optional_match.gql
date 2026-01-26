@@ -1,0 +1,41 @@
+-- GQL Basic Example 009: OPTIONAL MATCH (Left Join)
+-- CANARY: REQ=REQ-GQL-OPTIONAL-001; FEATURE="OptionalMatch"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates OPTIONAL MATCH for left-join patterns.
+-- Source: GQL Guide
+
+-- Basic OPTIONAL MATCH
+-- Returns all persons, with NULL for those without friends
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:KNOWS]->(friend:Person)
+RETURN p.name, friend.name AS friend_name
+ORDER BY p.name;
+
+-- OPTIONAL MATCH with aggregation
+-- Count friends including zero for those with none
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:KNOWS]->(friend:Person)
+RETURN p.name, COUNT(friend) AS friend_count
+ORDER BY friend_count DESC;
+
+-- Multiple OPTIONAL MATCHes
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:KNOWS]->(friend:Person)
+OPTIONAL MATCH (p)-[:LIVES_IN]->(city:City)
+RETURN
+    p.name,
+    COUNT(DISTINCT friend) AS friends,
+    city.name AS city;
+
+-- OPTIONAL MATCH with COALESCE for default values
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:KNOWS]->(friend:Person)
+RETURN
+    p.name,
+    COALESCE(friend.name, 'No friends') AS friend_name;
+
+-- Filtering on optional results
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:KNOWS]->(friend:Person)
+WHERE friend.age > 30
+RETURN p.name, friend.name AS older_friend;

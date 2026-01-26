@@ -1,0 +1,59 @@
+-- GQL Indexing Example 003: Full-Text Index (BM25)
+-- CANARY: REQ=REQ-INDEX-FT-001; FEATURE="FulltextIndex"; ASPECT=Indexing; STATUS=TESTED
+--
+-- This example demonstrates Full-text index with BM25 ranking.
+-- Verifies claim: "Full-text index (BM25 ranking)"
+-- Source: Features Overview, Indexing Tutorial
+
+-- Create test documents
+CREATE (:Article {
+    id: 'A001',
+    title: 'Introduction to Graph Databases',
+    content: 'Graph databases are designed to store and query highly connected data efficiently.'
+});
+
+CREATE (:Article {
+    id: 'A002',
+    title: 'GQL Query Language',
+    content: 'GQL is the ISO standard query language for graph databases, similar to SQL for relational databases.'
+});
+
+CREATE (:Article {
+    id: 'A003',
+    title: 'Performance Tuning',
+    content: 'Optimizing graph database performance requires understanding indexing and query patterns.'
+});
+
+-- Create full-text index on Article.content
+CREATE INDEX article_content_fulltext ON Article(content) USING fulltext;
+
+-- Create full-text index with language configuration
+CREATE INDEX article_title_fulltext ON Article(title) USING fulltext
+WITH (language = 'english', stemmer = 'porter');
+
+-- Full-text search query
+MATCH (a:Article)
+WHERE a.content CONTAINS 'graph database'
+RETURN a.title, a.content;
+
+-- Full-text search with ranking (BM25 score)
+MATCH (a:Article)
+WHERE a.content CONTAINS 'query'
+RETURN a.title, score(a) AS relevance
+ORDER BY relevance DESC;
+
+-- Multi-term search
+MATCH (a:Article)
+WHERE a.content CONTAINS 'graph AND query'
+RETURN a.title;
+
+-- Phrase search
+MATCH (a:Article)
+WHERE a.content CONTAINS '"graph databases"'
+RETURN a.title;
+
+-- Explain full-text query
+EXPLAIN
+MATCH (a:Article)
+WHERE a.content CONTAINS 'performance'
+RETURN a.title;

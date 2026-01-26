@@ -1,0 +1,31 @@
+# Minimal Geode Configuration
+# Use for quick testing and development with minimal resource usage
+#
+# Start with: geode serve --config configs/server/minimal.yaml
+
+server:
+  listen: "0.0.0.0:3141"
+  metrics_listen: "0.0.0.0:9090"
+  max_connections: 100
+  connection_timeout: "10s"
+  idle_timeout: "1m"
+
+storage:
+  data_dir: "/var/lib/geode/data"
+  wal_dir: "/var/lib/geode/wal"
+  page_size: 8192
+  page_cache_size: "256MB"
+  wal_buffer_size: "4MB"
+  wal_sync_interval: "1s"
+  compression: "none"
+
+security:
+  tde_enabled: false
+  auth_enabled: false
+
+logging:
+  level: "debug"
+  format: "text"
+
+monitoring:
+  prometheus_enabled: true

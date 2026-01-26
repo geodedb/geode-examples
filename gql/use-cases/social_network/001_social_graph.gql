@@ -1,0 +1,126 @@
+-- GQL Use Case: Social Network - Social Graph Queries
+-- CANARY: REQ=REQ-USECASE-SOCIAL-001; FEATURE="SocialNetwork"; ASPECT=UseCase; STATUS=TESTED
+--
+-- This example demonstrates social network patterns from the documentation.
+-- Source: Use Cases - Social Networks
+
+-- ============================================================================
+-- SETUP: Create Social Network Data
+-- ============================================================================
+
+CREATE (alice:Person:User {
+    id: 'u1',
+    name: 'Alice',
+    age: 30,
+    city: 'NYC',
+    joined: date('2020-01-15')
+});
+
+CREATE (bob:Person:User {
+    id: 'u2',
+    name: 'Bob',
+    age: 28,
+    city: 'LA',
+    joined: date('2020-03-20')
+});
+
+CREATE (carol:Person:User {
+    id: 'u3',
+    name: 'Carol',
+    age: 35,
+    city: 'NYC',
+    joined: date('2019-06-10')
+});
+
+CREATE (david:Person:User {
+    id: 'u4',
+    name: 'David',
+    age: 32,
+    city: 'Chicago',
+    joined: date('2021-01-01')
+});
+
+CREATE (eve:Person:User {
+    id: 'u5',
+    name: 'Eve',
+    age: 27,
+    city: 'NYC',
+    joined: date('2022-05-15')
+});
+
+-- Create friendships (KNOWS relationships)
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+CREATE (a)-[:KNOWS {since: date('2020-06-01')}]->(b);
+
+MATCH (a:Person {name: 'Alice'}), (c:Person {name: 'Carol'})
+CREATE (a)-[:KNOWS {since: date('2020-02-15')}]->(c);
+
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Carol'})
+CREATE (b)-[:KNOWS {since: date('2021-01-10')}]->(c);
+
+MATCH (b:Person {name: 'Bob'}), (d:Person {name: 'David'})
+CREATE (b)-[:KNOWS {since: date('2021-03-20')}]->(d);
+
+MATCH (c:Person {name: 'Carol'}), (e:Person {name: 'Eve'})
+CREATE (c)-[:KNOWS {since: date('2022-06-01')}]->(e);
+
+MATCH (d:Person {name: 'David'}), (e:Person {name: 'Eve'})
+CREATE (d)-[:KNOWS {since: date('2022-07-15')}]->(e);
+
+-- ============================================================================
+-- QUERIES: Social Network Patterns
+-- ============================================================================
+
+-- 1. Find direct friends
+MATCH (me:Person {name: 'Alice'})-[:KNOWS]->(friend:Person)
+RETURN friend.name AS friend, friend.city AS city
+ORDER BY friend.name;
+
+-- 2. Find friends of friends (excluding direct friends and self)
+MATCH (me:Person {name: 'Alice'})-[:KNOWS]->(friend)-[:KNOWS]->(fof:Person)
+WHERE fof <> me
+  AND NOT (me)-[:KNOWS]->(fof)
+RETURN DISTINCT fof.name AS friend_of_friend
+ORDER BY fof.name;
+
+-- 3. Find mutual friends between two people
+MATCH (alice:Person {name: 'Alice'})-[:KNOWS]->(mutual:Person)<-[:KNOWS]-(bob:Person {name: 'Bob'})
+RETURN mutual.name AS mutual_friend;
+
+-- 4. Degrees of separation (shortest path)
+MATCH path = shortestPath(
+    (alice:Person {name: 'Alice'})-[:KNOWS*]-(eve:Person {name: 'Eve'})
+)
+RETURN
+    length(path) AS degrees,
+    [n IN nodes(path) | n.name] AS path_names;
+
+-- 5. Friend count and popularity ranking
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:KNOWS]-(friend:Person)
+RETURN
+    p.name AS person,
+    COUNT(DISTINCT friend) AS friend_count
+ORDER BY friend_count DESC;
+
+-- 6. Find people within N degrees
+MATCH (me:Person {name: 'Alice'})-[:KNOWS*1..2]-(connected:Person)
+WHERE connected <> me
+RETURN DISTINCT connected.name AS within_2_degrees
+ORDER BY connected.name;
+
+-- 7. Common interests / shared connections
+MATCH (alice:Person {name: 'Alice'})-[:KNOWS]->(common:Person)<-[:KNOWS]-(other:Person)
+WHERE other <> alice
+RETURN
+    other.name AS person,
+    COUNT(common) AS shared_friends
+ORDER BY shared_friends DESC;
+
+-- 8. Network clustering - find tightly connected groups
+MATCH (a:Person)-[:KNOWS]-(b:Person)-[:KNOWS]-(c:Person)-[:KNOWS]-(a)
+RETURN DISTINCT
+    a.name AS person1,
+    b.name AS person2,
+    c.name AS person3
+ORDER BY person1, person2, person3;

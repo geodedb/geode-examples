@@ -1,0 +1,219 @@
+# Geode Examples - Makefile
+#
+# Build, test, and verification orchestration for Geode examples and claim verification.
+#
+# Usage:
+#   make setup      - Set up local development environment
+#   make test       - Run all tests
+#   make benchmark  - Run performance benchmarks
+#   make verify     - Run full claim verification
+#   make report     - Generate verification report
+#   make clean      - Clean up environment
+
+.PHONY: all setup build test test-gql test-clients test-features test-security \
+        benchmark benchmark-throughput benchmark-latency benchmark-vector \
+        verify verify-claims verify-canary \
+        report clean help
+
+# Configuration
+DOCKER_COMPOSE ?= docker compose
+GEODE_HOST ?= localhost:3141
+REPORTS_DIR ?= reports
+PUBLIC_DIR ?= public
+
+# Default target
+all: setup test verify report
+
+##@ Setup
+
+setup: ## Set up local development environment
+	@echo "Setting up Geode Examples environment..."
+	@chmod +x scripts/*.sh
+	@./scripts/setup.sh
+
+setup-monitoring: ## Set up with monitoring stack
+	@./scripts/setup.sh --with-monitoring
+
+setup-full: ## Set up with all optional services
+	@./scripts/setup.sh --with-monitoring --with-kafka
+
+##@ Build
+
+build: build-docker ## Build all components
+
+build-docker: ## Build Docker images
+	@echo "Building Docker images..."
+	$(DOCKER_COMPOSE) build
+
+build-clients: build-go build-python build-rust build-zig ## Build all client examples
+
+build-go: ## Build Go client examples
+	@if [ -f clients/go/go.mod ]; then \
+		cd clients/go && go build ./...; \
+	fi
+
+build-python: ## Install Python dependencies
+	@if [ -f clients/python/requirements.txt ]; then \
+		pip install -r clients/python/requirements.txt; \
+	fi
+
+build-rust: ## Build Rust client examples
+	@if [ -f clients/rust/Cargo.toml ]; then \
+		cd clients/rust && cargo build; \
+	fi
+
+build-zig: ## Build Zig client examples
+	@if [ -f clients/zig/build.zig ]; then \
+		cd clients/zig && zig build; \
+	fi
+
+##@ Testing
+
+test: test-gql test-clients test-features ## Run all tests
+
+test-quick: ## Run quick smoke tests
+	@./scripts/run_all_tests.sh --quick
+
+test-gql: ## Run GQL compliance tests
+	@echo "Running GQL tests..."
+	@./scripts/run_all_tests.sh --category gql
+
+test-clients: ## Run client library tests
+	@echo "Running client tests..."
+	@./scripts/run_all_tests.sh --category clients
+
+test-features: ## Run feature verification tests
+	@echo "Running feature tests..."
+	@./scripts/run_all_tests.sh --category features
+
+test-security: ## Run security verification tests
+	@echo "Running security tests..."
+	@./scripts/run_all_tests.sh --category security
+
+test-performance: ## Run performance verification tests
+	@echo "Running performance tests..."
+	@./scripts/run_all_tests.sh --category performance
+
+##@ Benchmarks
+
+benchmark: benchmark-throughput benchmark-latency ## Run all benchmarks
+
+benchmark-throughput: ## Run throughput benchmarks
+	@echo "Running throughput benchmarks..."
+	@mkdir -p $(REPORTS_DIR)
+	@if [ -f benchmarks/load-tests/read_only.py ]; then \
+		python benchmarks/load-tests/read_only.py \
+			--host $(GEODE_HOST) \
+			--output $(REPORTS_DIR)/throughput-read-only.json; \
+	fi
+
+benchmark-latency: ## Run latency benchmarks
+	@echo "Running latency benchmarks..."
+	@mkdir -p $(REPORTS_DIR)
+	@if [ -f benchmarks/load-tests/vector_distance.py ]; then \
+		python benchmarks/load-tests/vector_distance.py \
+			--host $(GEODE_HOST) \
+			--output $(REPORTS_DIR)/latency-vector.json; \
+	fi
+
+benchmark-vector: ## Run vector search benchmarks
+	@echo "Running vector search benchmarks..."
+	@mkdir -p $(REPORTS_DIR)
+
+benchmark-scale: ## Run scalability tests (long running)
+	@echo "Running scalability tests..."
+	@echo "Warning: This may take several hours"
+
+##@ Verification
+
+verify: verify-claims verify-canary ## Run full verification
+
+verify-claims: ## Verify all documented claims
+	@echo "Verifying documented claims..."
+	@./scripts/run_all_tests.sh
+
+verify-canary: ## Cross-reference with CANARY markers
+	@echo "Cross-referencing CANARY markers..."
+	@./scripts/compare_canary.sh
+
+extract-claims: ## Extract claims from documentation
+	@echo "Extracting claims from documentation..."
+	@./scripts/extract_all_claims.sh
+
+##@ Reporting
+
+report: report-json report-html report-badge ## Generate all reports
+
+report-json: ## Generate JSON verification report
+	@./scripts/generate_report.sh --json
+
+report-html: ## Generate HTML verification report
+	@./scripts/generate_report.sh --html
+
+report-badge: ## Generate verification badge
+	@./scripts/generate_report.sh --badge
+
+##@ Docker
+
+up: ## Start Geode server
+	$(DOCKER_COMPOSE) up -d geode
+
+down: ## Stop all services
+	$(DOCKER_COMPOSE) down
+
+logs: ## Follow Geode logs
+	$(DOCKER_COMPOSE) logs -f geode
+
+shell: ## Open Geode shell
+	$(DOCKER_COMPOSE) exec geode geode shell
+
+status: ## Show service status
+	$(DOCKER_COMPOSE) ps
+
+##@ Helm
+
+helm-lint: ## Lint Helm charts
+	@helm lint helm/geode
+	@helm lint helm/geode-cluster 2>/dev/null || true
+
+helm-template: ## Template Helm chart (dry-run)
+	@helm template geode helm/geode
+
+helm-install: ## Install Geode via Helm (requires K8s cluster)
+	@helm install geode helm/geode
+
+helm-upgrade: ## Upgrade Geode Helm release
+	@helm upgrade geode helm/geode
+
+helm-uninstall: ## Uninstall Geode Helm release
+	@helm uninstall geode
+
+##@ Cleanup
+
+clean: ## Clean up environment
+	@echo "Cleaning up..."
+	$(DOCKER_COMPOSE) down -v --remove-orphans
+	rm -rf $(REPORTS_DIR)/*
+	rm -rf $(PUBLIC_DIR)/*
+
+clean-docker: ## Remove Docker images
+	docker rmi geodedb/geode:latest 2>/dev/null || true
+	docker rmi geode-benchmark:latest 2>/dev/null || true
+	docker rmi geode-test-harness:latest 2>/dev/null || true
+
+clean-all: clean clean-docker ## Full cleanup including images
+
+##@ CI/CD
+
+ci: build test verify report ## Run full CI pipeline
+	@echo "CI pipeline complete"
+
+ci-quick: build test-quick ## Run quick CI checks
+	@echo "Quick CI checks complete"
+
+##@ Help
+
+help: ## Display this help
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+.DEFAULT_GOAL := help

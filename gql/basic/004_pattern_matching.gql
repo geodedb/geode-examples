@@ -1,0 +1,49 @@
+-- GQL Basic Example 004: Pattern Matching
+-- CANARY: REQ=REQ-GQL-PATTERN-001; FEATURE="PatternMatching"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates basic pattern matching queries.
+-- Verifies claim: "Complete pattern matching syntax from ISO standard"
+-- Source: Features Overview
+
+-- First, create test data
+CREATE (alice:Person {name: 'Alice', age: 30, city: 'NYC'}),
+       (bob:Person {name: 'Bob', age: 25, city: 'LA'}),
+       (carol:Person {name: 'Carol', age: 35, city: 'NYC'}),
+       (dave:Person {name: 'Dave', age: 28, city: 'Chicago'});
+
+-- Create relationships
+MATCH (alice:Person {name: 'Alice'}), (bob:Person {name: 'Bob'})
+CREATE (alice)-[:KNOWS {since: 2020}]->(bob);
+
+MATCH (bob:Person {name: 'Bob'}), (carol:Person {name: 'Carol'})
+CREATE (bob)-[:KNOWS {since: 2021}]->(carol);
+
+MATCH (carol:Person {name: 'Carol'}), (dave:Person {name: 'Dave'})
+CREATE (carol)-[:KNOWS {since: 2019}]->(dave);
+
+MATCH (alice:Person {name: 'Alice'}), (carol:Person {name: 'Carol'})
+CREATE (alice)-[:KNOWS {since: 2022}]->(carol);
+
+-- Basic pattern: Single relationship traversal
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+RETURN p.name AS person, friend.name AS knows
+ORDER BY p.name;
+
+-- Pattern with WHERE clause
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+WHERE p.age > friend.age
+RETURN p.name AS older, friend.name AS younger;
+
+-- Pattern with property filter in pattern
+MATCH (p:Person {city: 'NYC'})-[:KNOWS]->(friend:Person)
+RETURN p.name, friend.name;
+
+-- Bidirectional relationship (any direction)
+MATCH (p1:Person)-[:KNOWS]-(p2:Person)
+WHERE p1.name = 'Bob'
+RETURN DISTINCT p2.name AS connected_to_bob;
+
+-- Multiple relationship types
+MATCH (p:Person)-[r]->(other)
+RETURN p.name, type(r) AS rel_type, labels(other) AS other_labels
+ORDER BY p.name;

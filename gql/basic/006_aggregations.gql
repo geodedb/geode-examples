@@ -1,0 +1,67 @@
+-- GQL Basic Example 006: Aggregations
+-- CANARY: REQ=REQ-GQL-AGG-001; FEATURE="Aggregations"; ASPECT=QueryExecution; STATUS=TESTED
+--
+-- This example demonstrates all aggregation functions.
+-- Verifies claim: "Full aggregation support (COUNT, SUM, AVG, MIN, MAX, GROUP BY)"
+-- Source: Features Overview
+
+-- COUNT: Total number of nodes
+MATCH (p:Person)
+RETURN COUNT(p) AS total_people;
+
+-- COUNT with condition
+MATCH (p:Person)
+WHERE p.age > 25
+RETURN COUNT(p) AS people_over_25;
+
+-- AVG: Average age
+MATCH (p:Person)
+RETURN AVG(p.age) AS average_age;
+
+-- SUM: Total age
+MATCH (p:Person)
+RETURN SUM(p.age) AS total_age;
+
+-- MIN and MAX
+MATCH (p:Person)
+RETURN
+    MIN(p.age) AS youngest,
+    MAX(p.age) AS oldest;
+
+-- All aggregations together
+MATCH (p:Person)
+RETURN
+    COUNT(p) AS total,
+    AVG(p.age) AS avg_age,
+    SUM(p.age) AS total_age,
+    MIN(p.age) AS min_age,
+    MAX(p.age) AS max_age;
+
+-- GROUP BY: Count by city
+MATCH (p:Person)
+RETURN p.city, COUNT(p) AS population
+GROUP BY p.city
+ORDER BY population DESC;
+
+-- GROUP BY with multiple aggregations
+MATCH (p:Person)
+RETURN
+    p.city,
+    COUNT(p) AS count,
+    AVG(p.age) AS avg_age,
+    MIN(p.age) AS youngest,
+    MAX(p.age) AS oldest
+GROUP BY p.city
+ORDER BY count DESC;
+
+-- COUNT DISTINCT
+MATCH (p:Person)
+RETURN COUNT(DISTINCT p.city) AS unique_cities;
+
+-- Aggregation with relationships
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+RETURN
+    p.name,
+    COUNT(friend) AS friend_count,
+    AVG(friend.age) AS avg_friend_age
+ORDER BY friend_count DESC;
