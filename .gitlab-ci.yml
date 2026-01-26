@@ -184,6 +184,57 @@ test:client:rust:
     - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
+test:client:nodejs:
+  stage: test-clients
+  image: node:20-alpine
+  extends: .geode-service
+  script:
+    - |
+      if [ -f clients/nodejs/package.json ]; then
+        cd clients/nodejs
+        npm install
+        npm test 2>&1 | tee ../../reports/nodejs-tests.log || true
+        # Run examples as smoke test
+        npm run basic 2>&1 | tee -a ../../reports/nodejs-tests.log || true
+      else
+        echo "Node.js client not configured, skipping"
+      fi
+  artifacts:
+    paths:
+      - reports/nodejs-tests.log
+    when: always
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+test:client:zig:
+  stage: test-clients
+  image: debian:bookworm
+  extends: .geode-service
+  script:
+    - apt-get update && apt-get install -y wget xz-utils
+    - wget -q https://ziglang.org/download/0.15.0/zig-linux-x86_64-0.15.0.tar.xz
+    - tar -xf zig-linux-x86_64-0.15.0.tar.xz
+    - export PATH="$PWD/zig-linux-x86_64-0.15.0:$PATH"
+    - |
+      if [ -f clients/zig/build.zig ]; then
+        cd clients/zig
+        zig build 2>&1 | tee ../../reports/zig-build.log
+        zig build test 2>&1 | tee -a ../../reports/zig-tests.log || true
+      else
+        echo "Zig client not configured, skipping"
+      fi
+  artifacts:
+    paths:
+      - reports/zig-tests.log
+      - reports/zig-build.log
+    when: always
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
 # =============================================================================
 # Feature Verification Tests
 # =============================================================================
@@ -305,6 +356,116 @@ test:security:rls:
       junit: reports/security-rls.xml
     paths:
       - reports/security-rls.log
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+test:security:mfa:
+  stage: security
+  extends: .geode-service
+  script:
+    - mkdir -p reports
+    - |
+      if [ -f verification/claims/security/mfa_totp.py ]; then
+        python3 -m pytest verification/claims/security/mfa_totp.py -v \
+          --junitxml=reports/security-mfa.xml 2>&1 | tee reports/security-mfa.log
+      else
+        echo "MFA tests not configured, skipping"
+      fi
+  artifacts:
+    reports:
+      junit: reports/security-mfa.xml
+    paths:
+      - reports/security-mfa.log
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+test:security:tls:
+  stage: security
+  extends: .geode-service
+  script:
+    - mkdir -p reports
+    - |
+      if [ -f verification/claims/security/tls_protocol.py ]; then
+        python3 -m pytest verification/claims/security/tls_protocol.py -v \
+          --junitxml=reports/security-tls.xml 2>&1 | tee reports/security-tls.log
+      else
+        echo "TLS tests not configured, skipping"
+      fi
+  artifacts:
+    reports:
+      junit: reports/security-tls.xml
+    paths:
+      - reports/security-tls.log
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+test:security:quic:
+  stage: security
+  extends: .geode-service
+  script:
+    - mkdir -p reports
+    - |
+      if [ -f verification/claims/security/quic_transport.py ]; then
+        python3 -m pytest verification/claims/security/quic_transport.py -v \
+          --junitxml=reports/security-quic.xml 2>&1 | tee reports/security-quic.log
+      else
+        echo "QUIC tests not configured, skipping"
+      fi
+  artifacts:
+    reports:
+      junit: reports/security-quic.xml
+    paths:
+      - reports/security-quic.log
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+test:security:password:
+  stage: security
+  extends: .geode-service
+  script:
+    - mkdir -p reports
+    - |
+      if [ -f verification/claims/security/password_hashing.py ]; then
+        python3 -m pytest verification/claims/security/password_hashing.py -v \
+          --junitxml=reports/security-password.xml 2>&1 | tee reports/security-password.log
+      else
+        echo "Password hashing tests not configured, skipping"
+      fi
+  artifacts:
+    reports:
+      junit: reports/security-password.xml
+    paths:
+      - reports/security-password.log
+    when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+test:security:audit:
+  stage: security
+  extends: .geode-service
+  script:
+    - mkdir -p reports
+    - |
+      if [ -f verification/claims/security/audit_logging.py ]; then
+        python3 -m pytest verification/claims/security/audit_logging.py -v \
+          --junitxml=reports/security-audit.xml 2>&1 | tee reports/security-audit.log
+      else
+        echo "Audit logging tests not configured, skipping"
+      fi
+  artifacts:
+    reports:
+      junit: reports/security-audit.xml
+    paths:
+      - reports/security-audit.log
     when: always
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
