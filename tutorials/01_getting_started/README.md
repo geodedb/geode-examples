@@ -20,7 +20,7 @@ The simplest way to get started is using Docker:
 docker run -d \
   --name geode \
   -p 3141:3141 \
-  geodedb/geode:latest
+  registry.gitlab.com/devnw/codepros/geode/geode:latest
 
 # Verify it's running
 docker logs geode
@@ -203,7 +203,7 @@ geode shell --connect localhost:3141 --insecure
 ### Port Already in Use
 Change the port mapping:
 ```bash
-docker run -p 13141:3141 geodedb/geode:latest
+docker run -p 13141:3141 registry.gitlab.com/devnw/codepros/geode/geode:latest
 geode shell --connect localhost:13141
 ```
 

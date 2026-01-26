@@ -23,7 +23,7 @@ version: '3.8'
 
 services:
   geode:
-    image: geodedb/geode:0.18.0
+    image: registry.gitlab.com/devnw/codepros/geode/geode:0.18.0
     restart: always
     ports:
       - "3141:3141"
@@ -93,7 +93,7 @@ spec:
     spec:
       containers:
       - name: geode
-        image: geodedb/geode:0.18.0
+        image: registry.gitlab.com/devnw/codepros/geode/geode:0.18.0
         ports:
         - containerPort: 3141
           name: geode
@@ -207,7 +207,7 @@ helm install geode ./helm/geode \
 replicaCount: 3
 
 image:
-  repository: geodedb/geode
+  repository: registry.gitlab.com/devnw/codepros/geode/geode
   tag: "0.18.0"
   pullPolicy: IfNotPresent
 
@@ -350,7 +350,7 @@ spec:
     spec:
       containers:
       - name: geode
-        image: geodedb/geode:0.18.0
+        image: registry.gitlab.com/devnw/codepros/geode/geode:0.18.0
         env:
         - name: POD_NAME
           valueFrom:

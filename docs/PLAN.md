@@ -373,7 +373,7 @@ keywords:
 replicaCount: 1
 
 image:
-  repository: geodedb/geode
+  repository: registry.gitlab.com/devnw/codepros/geode/geode
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -1229,7 +1229,7 @@ version: '3.8'
 
 services:
   geode:
-    image: geodedb/geode:0.18.0
+    image: registry.gitlab.com/devnw/codepros/geode/geode:0.18.0
     restart: always
     ports:
       - "3141:3141"
@@ -1396,7 +1396,7 @@ stages:
   - report
 
 variables:
-  GEODE_IMAGE: "geodedb/geode:latest"
+  GEODE_IMAGE: "registry.gitlab.com/devnw/codepros/geode/geode:latest"
   DOCKER_HOST: tcp://docker:2375
 
 # Build stage

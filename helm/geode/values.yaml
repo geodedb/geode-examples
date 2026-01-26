@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: geodedb/geode
+  repository: registry.gitlab.com/devnw/codepros/geode/geode
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion
   tag: ""
