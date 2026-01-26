@@ -106,6 +106,43 @@ class LatencyCollector:
 
 
 # =============================================================================
+# Connectivity Check
+# =============================================================================
+
+def check_connectivity(host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Tuple[bool, str]:
+    """
+    Check if we can connect to the Geode server.
+    Returns (success, message).
+    """
+    try:
+        if use_docker:
+            cmd = [
+                "docker", "compose", "exec", "-T", "geode",
+                "geode", "query", "--server", "localhost:3141", "--insecure",
+                "RETURN 1"
+            ]
+        else:
+            cmd = [
+                geode_path, "query", "--server", f"{host}:{port}", "--insecure",
+                "RETURN 1"
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10.0)
+
+        if result.returncode == 0:
+            return True, "Connected successfully"
+        else:
+            return False, f"Connection failed: {result.stderr.strip()}"
+
+    except subprocess.TimeoutExpired:
+        return False, "Connection timed out"
+    except FileNotFoundError as e:
+        return False, f"Command not found: {e}"
+    except Exception as e:
+        return False, f"Error: {e}"
+
+
+# =============================================================================
 # Base Worker Function (used by all client types)
 # =============================================================================
 
@@ -119,6 +156,7 @@ def base_worker(
     host: str,
     port: int,
     use_docker: bool,
+    geode_path: str = "geode",
     client_label: str = "cli"
 ):
     """
@@ -138,7 +176,7 @@ def base_worker(
                 ]
             else:
                 cmd = [
-                    "geode", "query", "--server", f"{host}:{port}", "--insecure",
+                    geode_path, "query", "--server", f"{host}:{port}", "--insecure",
                     queries
                 ]
 
@@ -167,7 +205,8 @@ def run_client_benchmark(
     batch_size: int,
     host: str,
     port: int,
-    use_docker: bool
+    use_docker: bool,
+    geode_path: str = "geode"
 ) -> ClientResult:
     """
     Run a benchmark for any client type.
@@ -182,7 +221,7 @@ def run_client_benchmark(
     for i in range(workers):
         t = threading.Thread(
             target=base_worker,
-            args=(i, stop_event, successful, failed, latencies, batch_size, host, port, use_docker, client_name),
+            args=(i, stop_event, successful, failed, latencies, batch_size, host, port, use_docker, geode_path, client_name),
             daemon=True
         )
         t.start()
@@ -226,75 +265,59 @@ def run_client_benchmark(
 # Client-Specific Wrappers (for future native implementation)
 # =============================================================================
 
-def run_cli_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool) -> ClientResult:
+def run_cli_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> ClientResult:
     """CLI client benchmark - uses geode CLI directly."""
-    return run_client_benchmark("cli", workers, duration, batch_size, host, port, use_docker)
+    return run_client_benchmark("cli", workers, duration, batch_size, host, port, use_docker, geode_path)
 
 
-def run_go_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool) -> Optional[ClientResult]:
+def run_go_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
     """
     Go client benchmark.
 
     Note: Currently uses subprocess. For native Go client benchmarks,
     use the geode-client-go repository directly.
     """
-    # Check if Go is available (for future native implementation)
-    if not shutil.which("go"):
-        print("  Go not found, using subprocess fallback")
-
-    return run_client_benchmark("go", workers, duration, batch_size, host, port, use_docker)
+    return run_client_benchmark("go", workers, duration, batch_size, host, port, use_docker, geode_path)
 
 
-def run_python_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool) -> Optional[ClientResult]:
+def run_python_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
     """
     Python client benchmark.
 
     Note: Currently uses subprocess. For native Python client benchmarks,
     use the geode-client-python repository directly.
     """
-    return run_client_benchmark("python", workers, duration, batch_size, host, port, use_docker)
+    return run_client_benchmark("python", workers, duration, batch_size, host, port, use_docker, geode_path)
 
 
-def run_rust_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool) -> Optional[ClientResult]:
+def run_rust_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
     """
     Rust client benchmark.
 
     Note: Currently uses subprocess. For native Rust client benchmarks,
     use the geode-client-rust repository directly.
     """
-    # Check if Rust/Cargo is available (for future native implementation)
-    if not shutil.which("cargo"):
-        print("  Cargo not found, using subprocess fallback")
-
-    return run_client_benchmark("rust", workers, duration, batch_size, host, port, use_docker)
+    return run_client_benchmark("rust", workers, duration, batch_size, host, port, use_docker, geode_path)
 
 
-def run_zig_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool) -> Optional[ClientResult]:
+def run_zig_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
     """
     Zig client benchmark.
 
     Note: Currently uses subprocess. For native Zig client benchmarks,
     use the geode-client-zig repository directly.
     """
-    # Check if Zig is available (for future native implementation)
-    if not shutil.which("zig"):
-        print("  Zig not found, using subprocess fallback")
-
-    return run_client_benchmark("zig", workers, duration, batch_size, host, port, use_docker)
+    return run_client_benchmark("zig", workers, duration, batch_size, host, port, use_docker, geode_path)
 
 
-def run_nodejs_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool) -> Optional[ClientResult]:
+def run_nodejs_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
     """
     Node.js client benchmark.
 
     Note: Currently uses subprocess. For native Node.js client benchmarks,
     use the geode-client-nodejs repository directly.
     """
-    # Check if Node.js is available (for future native implementation)
-    if not shutil.which("node"):
-        print("  Node.js not found, using subprocess fallback")
-
-    return run_client_benchmark("nodejs", workers, duration, batch_size, host, port, use_docker)
+    return run_client_benchmark("nodejs", workers, duration, batch_size, host, port, use_docker, geode_path)
 
 
 # =============================================================================
@@ -323,7 +346,9 @@ def run_multi_client_benchmark(
     host: str,
     port: int,
     use_docker: bool,
-    output_dir: Path
+    output_dir: Path,
+    geode_path: str = "geode",
+    skip_connectivity_check: bool = False
 ) -> MultiClientResult:
     """
     Run benchmarks with multiple clients in parallel.
@@ -336,7 +361,26 @@ def run_multi_client_benchmark(
     print(f"Duration: {duration}s")
     print(f"Batch size: {batch_size}")
     print(f"Host: {host}:{port}")
+    print(f"Mode: {'Docker' if use_docker else 'Bare-metal'}")
+    if not use_docker:
+        print(f"Geode path: {geode_path}")
     print()
+
+    # Connectivity check
+    if not skip_connectivity_check:
+        print("Checking connectivity...")
+        connected, message = check_connectivity(host, port, use_docker, geode_path)
+        if not connected:
+            print(f"  FAILED: {message}")
+            print()
+            print("For bare-metal mode, ensure:")
+            print("  1. Geode server is running on the target host")
+            print("  2. The geode CLI binary is in PATH or specified via --geode-path")
+            print("  3. The server is accessible at the specified host:port")
+            print()
+            raise RuntimeError(f"Connectivity check failed: {message}")
+        print(f"  OK: {message}")
+        print()
 
     output_dir.mkdir(parents=True, exist_ok=True)
     client_results = []
@@ -353,7 +397,7 @@ def run_multi_client_benchmark(
             benchmark_fn = CLIENT_BENCHMARKS[client]
             future = executor.submit(
                 benchmark_fn,
-                workers_per_client, duration, batch_size, host, port, use_docker
+                workers_per_client, duration, batch_size, host, port, use_docker, geode_path
             )
             futures[future] = client
             print(f"  Started {client} benchmark with {workers_per_client} workers")
@@ -448,19 +492,22 @@ Available clients:
   nodejs  - Node.js client
   all     - All available clients
 
-Note: All clients currently use subprocess-based execution.
-For native client benchmarks, use the actual client libraries
-from their respective repositories.
+Modes:
+  Docker (default) - Uses 'docker compose exec' to run queries inside container
+  Bare-metal       - Uses local geode CLI binary directly (--no-docker)
 
 Examples:
-  # CLI only (baseline)
+  # Docker mode (default) - queries run inside container
   python multi_client_benchmark.py --clients cli --workers 50
 
-  # Multiple clients for aggregate throughput
-  python multi_client_benchmark.py --clients cli,go,python --workers 100
+  # Bare-metal mode - direct connection to local/remote server
+  python multi_client_benchmark.py --clients all --workers 100 --no-docker
 
-  # All clients in parallel
-  python multi_client_benchmark.py --clients all --workers 50 --duration 120
+  # Bare-metal with custom geode binary path
+  python multi_client_benchmark.py --no-docker --geode-path /opt/geode/bin/geode
+
+  # Connect to remote server
+  python multi_client_benchmark.py --no-docker --host 192.168.1.100 --port 3141
         """
     )
     parser.add_argument(
@@ -513,7 +560,18 @@ Examples:
     parser.add_argument(
         "--no-docker",
         action="store_true",
-        help="Don't use docker compose for CLI client"
+        help="Bare-metal mode: use local geode CLI instead of docker compose"
+    )
+    parser.add_argument(
+        "--geode-path",
+        type=str,
+        default="geode",
+        help="Path to geode CLI binary for bare-metal mode (default: geode)"
+    )
+    parser.add_argument(
+        "--skip-connectivity-check",
+        action="store_true",
+        help="Skip the initial connectivity check"
     )
 
     args = parser.parse_args()
@@ -525,16 +583,22 @@ Examples:
         clients = [c.strip() for c in args.clients.split(",")]
 
     # Run benchmark
-    result = run_multi_client_benchmark(
-        clients=clients,
-        workers_per_client=args.workers,
-        duration=args.duration,
-        batch_size=args.batch_size,
-        host=args.host,
-        port=args.port,
-        use_docker=not args.no_docker,
-        output_dir=Path(args.output_dir)
-    )
+    try:
+        result = run_multi_client_benchmark(
+            clients=clients,
+            workers_per_client=args.workers,
+            duration=args.duration,
+            batch_size=args.batch_size,
+            host=args.host,
+            port=args.port,
+            use_docker=not args.no_docker,
+            output_dir=Path(args.output_dir),
+            geode_path=args.geode_path,
+            skip_connectivity_check=args.skip_connectivity_check
+        )
+    except RuntimeError as e:
+        print(f"\nBenchmark failed: {e}")
+        sys.exit(1)
 
     # Print results
     print_result(result)

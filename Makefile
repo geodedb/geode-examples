@@ -16,6 +16,7 @@
         benchmark-hightp-quick benchmark-hightp-standard benchmark-hightp-intensive benchmark-hightp-max \
         benchmark-multi-cli benchmark-multi-go benchmark-multi-rust benchmark-multi-zig \
         benchmark-multi-nodejs benchmark-multi-python benchmark-multi-native benchmark-multi-all benchmark-multi-intensive \
+        benchmark-bare-quick benchmark-bare-standard benchmark-bare-intensive benchmark-bare-multi benchmark-bare-max \
         benchmark-stats-quick benchmark-stats-standard benchmark-stats-publication benchmark-stats-intensive \
         production-up production-up-monitoring production-down production-logs \
         production-status production-shell setup-server \
@@ -296,6 +297,90 @@ benchmark-multi-native: ## Native clients benchmark (Go, Rust, Zig - 20 workers 
 		--duration 60 \
 		--batch-size 10 \
 		--output $(REPORTS_DIR)/multi_native.json
+
+##@ Bare-Metal Benchmarks (No Docker)
+# These targets run benchmarks directly against a local/remote Geode server
+# without Docker overhead. Requires geode server running and accessible.
+# Set GEODE_HOST to target a specific server (default: localhost:3141)
+# Set GEODE_BIN to specify geode CLI path (default: geode)
+
+GEODE_BIN ?= geode
+
+benchmark-bare-quick: ## Quick bare-metal test (30s, 50 workers, single client)
+	@echo "Running quick bare-metal benchmark..."
+	@echo "Target: $(GEODE_HOST)"
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients cli \
+		--workers 50 \
+		--duration 30 \
+		--batch-size 20 \
+		--no-docker \
+		--geode-path $(GEODE_BIN) \
+		--host $(firstword $(subst :, ,$(GEODE_HOST))) \
+		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
+		--output $(REPORTS_DIR)/bare_quick.json
+
+benchmark-bare-standard: ## Standard bare-metal benchmark (60s, 100 workers)
+	@echo "Running standard bare-metal benchmark..."
+	@echo "Target: $(GEODE_HOST)"
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients cli \
+		--workers 100 \
+		--duration 60 \
+		--batch-size 50 \
+		--no-docker \
+		--geode-path $(GEODE_BIN) \
+		--host $(firstword $(subst :, ,$(GEODE_HOST))) \
+		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
+		--output $(REPORTS_DIR)/bare_standard.json
+
+benchmark-bare-intensive: ## Intensive bare-metal benchmark (120s, 200 workers)
+	@echo "Running intensive bare-metal benchmark..."
+	@echo "Target: $(GEODE_HOST)"
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients cli \
+		--workers 200 \
+		--duration 120 \
+		--batch-size 100 \
+		--no-docker \
+		--geode-path $(GEODE_BIN) \
+		--host $(firstword $(subst :, ,$(GEODE_HOST))) \
+		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
+		--output $(REPORTS_DIR)/bare_intensive.json
+
+benchmark-bare-multi: ## Multi-client bare-metal benchmark (all clients, 50 workers each)
+	@echo "Running multi-client bare-metal benchmark..."
+	@echo "Target: $(GEODE_HOST)"
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients all \
+		--workers 50 \
+		--duration 60 \
+		--batch-size 20 \
+		--no-docker \
+		--geode-path $(GEODE_BIN) \
+		--host $(firstword $(subst :, ,$(GEODE_HOST))) \
+		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
+		--output $(REPORTS_DIR)/bare_multi.json
+
+benchmark-bare-max: ## Maximum bare-metal stress test (300s, 500 workers)
+	@echo "Running maximum bare-metal stress test..."
+	@echo "Target: $(GEODE_HOST)"
+	@echo "Warning: This is a stress test - ensure server can handle load"
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients cli \
+		--workers 500 \
+		--duration 300 \
+		--batch-size 100 \
+		--no-docker \
+		--geode-path $(GEODE_BIN) \
+		--host $(firstword $(subst :, ,$(GEODE_HOST))) \
+		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
+		--output $(REPORTS_DIR)/bare_max.json
 
 benchmark-multi-all: ## All clients in parallel (10 workers each)
 	@echo "Running all-clients benchmark..."
