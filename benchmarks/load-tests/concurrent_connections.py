@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -49,23 +49,43 @@ class ConnectionBenchmarkResult:
 class GeodeConnection:
     """Represents a single Geode connection."""
 
-    def __init__(self, conn_id: int, use_docker: bool = True):
+    def __init__(self, conn_id: int, host: str = "localhost", port: int = 3141, use_docker: bool = True, insecure: bool = True):
         self.conn_id = conn_id
+        self.host = host
+        self.port = port
         self.use_docker = use_docker
+        self.insecure = insecure
         self.connected = False
         self.connection_time_ms: float = 0
         self.queries_executed: int = 0
         self.queries_failed: int = 0
 
+    def _build_cmd(self, query: str) -> list:
+        """Build the command to execute a query."""
+        if self.use_docker:
+            cmd = [
+                "docker", "compose", "exec", "-T", "geode",
+                "geode", "query",
+                "--server", "localhost:3141",
+            ]
+            if self.insecure:
+                cmd.append("--insecure")
+            cmd.append(query)
+        else:
+            cmd = [
+                "geode", "query",
+                "--server", f"{self.host}:{self.port}",
+            ]
+            if self.insecure:
+                cmd.append("--insecure")
+            cmd.append(query)
+        return cmd
+
     def connect(self) -> bool:
         """Establish connection by executing a simple query."""
         start = time.perf_counter()
         try:
-            if self.use_docker:
-                cmd = ["docker", "compose", "exec", "-T", "geode", "geode", "shell", "-c", "RETURN 1"]
-            else:
-                cmd = ["geode", "shell", "-c", "RETURN 1"]
-
+            cmd = self._build_cmd("RETURN 1")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10.0)
             self.connection_time_ms = (time.perf_counter() - start) * 1000
 
@@ -81,11 +101,7 @@ class GeodeConnection:
         """Execute a query on this connection."""
         start = time.perf_counter()
         try:
-            if self.use_docker:
-                cmd = ["docker", "compose", "exec", "-T", "geode", "geode", "shell", "-c", query]
-            else:
-                cmd = ["geode", "shell", "-c", query]
-
+            cmd = self._build_cmd(query)
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5.0)
             latency = (time.perf_counter() - start) * 1000
             self.queries_executed += 1
@@ -227,7 +243,7 @@ async def run_benchmark(
 
     return ConnectionBenchmarkResult(
         benchmark_name="concurrent_connections",
-        timestamp=datetime.utcnow().isoformat() + "Z",
+        timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         duration_seconds=actual_duration,
         target_connections=target_connections,
         established_connections=established,

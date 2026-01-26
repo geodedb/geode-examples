@@ -27,9 +27,20 @@ class GeodeConnection:
         start = time.perf_counter()
         try:
             if self.use_docker:
-                cmd = ["docker", "compose", "exec", "-T", "geode", "geode", "shell", "-c", "RETURN 1"]
+                cmd = [
+                    "docker", "compose", "exec", "-T", "geode",
+                    "geode", "query",
+                    "--server", "localhost:3141",
+                    "--insecure",
+                    "RETURN 1"
+                ]
             else:
-                cmd = ["geode", "shell", "-c", "RETURN 1"]
+                cmd = [
+                    "geode", "query",
+                    "--server", "localhost:3141",
+                    "--insecure",
+                    "RETURN 1"
+                ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10.0)
             latency = (time.perf_counter() - start) * 1000

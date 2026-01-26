@@ -12,6 +12,9 @@
 
 .PHONY: all setup build test test-gql test-clients test-features test-security \
         benchmark benchmark-throughput benchmark-latency benchmark-vector \
+        benchmark-standard benchmark-full benchmark-extreme benchmark-scale \
+        production-up production-up-monitoring production-down production-logs \
+        production-status production-shell setup-server \
         verify verify-claims verify-canary \
         report clean help
 
@@ -123,6 +126,84 @@ benchmark-vector: ## Run vector search benchmarks
 benchmark-scale: ## Run scalability tests (long running)
 	@echo "Running scalability tests..."
 	@echo "Warning: This may take several hours"
+
+benchmark-standard: ## Run standard CI/CD benchmark (100K nodes, 100 connections)
+	@echo "Running standard benchmark profile..."
+	@mkdir -p $(REPORTS_DIR)
+	@python benchmarks/data-generators/scale_test.py \
+		--nodes 100000 \
+		--rels-per-node 5 \
+		--batch-size 5000 \
+		--output $(REPORTS_DIR)/scale_standard.json
+	@python benchmarks/load-tests/read_only.py \
+		--workers 100 \
+		--duration 300 \
+		--output $(REPORTS_DIR)/perf_standard_read.json
+	@python benchmarks/load-tests/concurrent_connections.py \
+		--target 100 \
+		--batch-size 10 \
+		--output $(REPORTS_DIR)/perf_standard_conn.json
+
+benchmark-full: ## Run full benchmark (1M nodes, 1K connections) - 30+ min
+	@echo "Running full benchmark profile..."
+	@echo "Warning: This will take 30+ minutes"
+	@mkdir -p $(REPORTS_DIR)
+	@python benchmarks/data-generators/scale_test.py \
+		--nodes 1000000 \
+		--rels-per-node 5 \
+		--batch-size 10000 \
+		--output $(REPORTS_DIR)/scale_full.json
+	@python benchmarks/load-tests/read_only.py \
+		--workers 100 \
+		--duration 600 \
+		--output $(REPORTS_DIR)/perf_full_read.json
+	@python benchmarks/load-tests/concurrent_connections.py \
+		--target 1000 \
+		--batch-size 50 \
+		--output $(REPORTS_DIR)/perf_full_conn.json
+
+benchmark-extreme: ## Run extreme benchmark (100M nodes, 10K connections) - 24+ hours
+	@echo "Running extreme benchmark profile..."
+	@echo "Warning: This requires significant resources and may take 24+ hours"
+	@echo "Recommended: 256GB+ RAM, 32+ cores, 2TB+ NVMe SSD"
+	@mkdir -p $(REPORTS_DIR)
+	@python benchmarks/data-generators/scale_test.py \
+		--nodes 100000000 \
+		--rels-per-node 10 \
+		--batch-size 50000 \
+		--output $(REPORTS_DIR)/scale_extreme.json
+	@python benchmarks/load-tests/read_only.py \
+		--workers 1000 \
+		--duration 3600 \
+		--output $(REPORTS_DIR)/perf_extreme_read.json
+	@python benchmarks/load-tests/concurrent_connections.py \
+		--target 10000 \
+		--batch-size 500 \
+		--output $(REPORTS_DIR)/perf_extreme_conn.json
+
+##@ Production Deployment
+
+production-up: ## Start Geode with production settings
+	$(DOCKER_COMPOSE) -f docker/docker-compose.production.yml up -d
+
+production-up-monitoring: ## Start Geode with production settings and monitoring
+	$(DOCKER_COMPOSE) -f docker/docker-compose.production.yml --profile monitoring up -d
+
+production-down: ## Stop production Geode
+	$(DOCKER_COMPOSE) -f docker/docker-compose.production.yml down
+
+production-logs: ## Follow production Geode logs
+	$(DOCKER_COMPOSE) -f docker/docker-compose.production.yml logs -f geode
+
+production-status: ## Show production service status
+	$(DOCKER_COMPOSE) -f docker/docker-compose.production.yml ps
+
+production-shell: ## Open shell in production container
+	$(DOCKER_COMPOSE) -f docker/docker-compose.production.yml exec geode /bin/sh
+
+setup-server: ## Setup bare metal server for production (requires sudo)
+	@echo "Setting up production server..."
+	@sudo ./scripts/setup_production_server.sh
 
 ##@ Verification
 

@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -50,17 +50,34 @@ class VectorBenchmarkResult:
 class GeodeVectorClient:
     """Geode client for vector operations."""
 
-    def __init__(self, use_docker: bool = True):
+    def __init__(self, host: str = "localhost", port: int = 3141, use_docker: bool = True, insecure: bool = True):
+        self.host = host
+        self.port = port
         self.use_docker = use_docker
+        self.insecure = insecure
 
     def execute(self, query: str, timeout: float = 5.0) -> tuple[bool, float]:
         """Execute a query and return (success, latency_ms)."""
         start = time.perf_counter()
         try:
             if self.use_docker:
-                cmd = ["docker", "compose", "exec", "-T", "geode", "geode", "shell", "-c", query]
+                cmd = [
+                    "docker", "compose", "exec", "-T", "geode",
+                    "geode", "query",
+                    "--server", "localhost:3141",
+                ]
+                if self.insecure:
+                    cmd.append("--insecure")
+                cmd.append(query)
             else:
-                cmd = ["geode", "shell", "-c", query]
+                cmd = [
+                    "geode", "query",
+                    "--server", f"{self.host}:{self.port}",
+                    "--timeout", str(int(timeout)),
+                ]
+                if self.insecure:
+                    cmd.append("--insecure")
+                cmd.append(query)
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             latency = (time.perf_counter() - start) * 1000
@@ -192,7 +209,7 @@ async def run_benchmark(
 
     return VectorBenchmarkResult(
         benchmark_name="vector_distance",
-        timestamp=datetime.utcnow().isoformat() + "Z",
+        timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         dimensions=dimensions,
         distance_type=distance_type,
         total_operations=iterations,

@@ -46,7 +46,7 @@ build:docker:
     - docker compose build
     - docker compose up -d geode
     - sleep 10
-    - docker compose exec -T geode geode shell -c "RETURN 1"
+    - docker compose exec -T geode geode query --server localhost:3141 --insecure "RETURN 1"
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
@@ -63,7 +63,7 @@ build:docker:
     - pip3 install --break-system-packages pytest pytest-asyncio pyyaml
     - docker compose up -d geode
     - sleep 15
-    - docker compose exec -T geode geode shell -c "RETURN 1" || (docker compose logs geode && exit 1)
+    - docker compose exec -T geode geode query --server localhost:3141 --insecure "RETURN 1" || (docker compose logs geode && exit 1)
 
 test:gql:basic:
   stage: test-gql
@@ -74,7 +74,8 @@ test:gql:basic:
       for f in gql/basic/*.gql; do
         if [ -f "$f" ]; then
           echo "Testing $f..."
-          docker compose exec -T geode geode shell < "$f" || exit 1
+          query=$(cat "$f")
+          docker compose exec -T geode geode query --server localhost:3141 --insecure "$query" || exit 1
         fi
       done
   rules:
@@ -91,7 +92,8 @@ test:gql:advanced:
       for f in gql/advanced/*.gql; do
         if [ -f "$f" ]; then
           echo "Testing $f..."
-          docker compose exec -T geode geode shell < "$f" || exit 1
+          query=$(cat "$f")
+          docker compose exec -T geode geode query --server localhost:3141 --insecure "$query" || exit 1
         fi
       done
   rules:
@@ -108,7 +110,8 @@ test:gql:transactions:
       for f in gql/transactions/*.gql; do
         if [ -f "$f" ]; then
           echo "Testing $f..."
-          docker compose exec -T geode geode shell < "$f" || exit 1
+          query=$(cat "$f")
+          docker compose exec -T geode geode query --server localhost:3141 --insecure "$query" || exit 1
         fi
       done
   rules:

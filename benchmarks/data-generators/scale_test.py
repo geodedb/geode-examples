@@ -53,9 +53,20 @@ class ScaleTestGenerator:
         """Execute a GQL query."""
         try:
             if self.use_docker:
-                cmd = ["docker", "compose", "exec", "-T", "geode", "geode", "shell", "-c", query]
+                cmd = [
+                    "docker", "compose", "exec", "-T", "geode",
+                    "geode", "query",
+                    "--server", "localhost:3141",
+                    "--insecure",
+                    query
+                ]
             else:
-                cmd = ["geode", "shell", "-c", query]
+                cmd = [
+                    "geode", "query",
+                    "--server", "localhost:3141",
+                    "--insecure",
+                    query
+                ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             if result.returncode != 0:

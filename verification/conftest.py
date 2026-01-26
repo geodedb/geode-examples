@@ -56,15 +56,18 @@ class GeodeClient:
                 # Execute via docker compose
                 cmd = [
                     "docker", "compose", "exec", "-T", "geode",
-                    "geode", "shell", "-c", query
+                    "geode", "query",
+                    "--server", "localhost:3141",
+                    "--insecure",
+                    query
                 ]
             else:
                 # Direct execution
                 cmd = [
-                    "geode", "shell",
-                    "--host", self.host,
-                    "--port", str(self.port),
-                    "-c", query
+                    "geode", "query",
+                    "--server", f"{self.host}:{self.port}",
+                    "--insecure",
+                    query
                 ]
 
             result = subprocess.run(

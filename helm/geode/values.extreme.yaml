@@ -1,0 +1,139 @@
+# Extreme Scale Testing values for Geode Helm chart
+#
+# For testing 100M+ nodes, 1B+ relationships, 10K+ connections
+#
+# Hardware Requirements per node:
+#   - CPU: 32+ cores
+#   - RAM: 256GB+
+#   - Storage: 2TB+ NVMe SSD
+#   - Network: 25Gbps+
+#
+# Apply with:
+#   helm install geode ./helm/geode -f ./helm/geode/values.extreme.yaml --namespace geode
+
+replicaCount: 5
+
+image:
+  repository: geodedb/geode
+  tag: "latest"
+  pullPolicy: Always
+
+resources:
+  limits:
+    cpu: 32
+    memory: 256Gi
+  requests:
+    cpu: 16
+    memory: 128Gi
+
+persistence:
+  enabled: true
+  storageClass: "fast-nvme"
+  size: 2Ti
+
+walPersistence:
+  enabled: true
+  storageClass: "fast-nvme"
+  size: 500Gi
+
+config:
+  server:
+    listen: "0.0.0.0:3141"
+    metricsListen: "0.0.0.0:9090"
+    maxConnections: 50000
+    connectionTimeout: "60s"
+    idleTimeout: "10m"
+
+  storage:
+    dataDir: "/var/lib/geode/data"
+    walDir: "/var/lib/geode/wal"
+    pageSize: 16384
+    pageCacheSize: "128GB"
+    walBufferSize: "256MB"
+    walSyncInterval: "25ms"
+    compression: "zstd"
+
+  security:
+    tdeEnabled: true
+    tlsEnabled: true
+    authEnabled: true
+
+  logging:
+    level: "warn"
+    format: "json"
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 70
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: "10s"
+    scrapeTimeout: "5s"
+
+livenessProbe:
+  initialDelaySeconds: 120
+  periodSeconds: 60
+  timeoutSeconds: 10
+  failureThreshold: 5
+
+readinessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - geode
+        topologyKey: "kubernetes.io/hostname"
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node.kubernetes.io/instance-type
+              operator: In
+              values:
+                - m6i.8xlarge    # AWS
+                - n2-highmem-32  # GCP
+                - Standard_E32s_v5  # Azure
+
+tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "database"
+    effect: "NoSchedule"
+  - key: "workload"
+    operator: "Equal"
+    value: "extreme"
+    effect: "NoSchedule"
+
+nodeSelector:
+  workload-type: database
+  performance-tier: extreme
+
+# Pod disruption budget for HA
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 3
+
+# Priority class for scheduling
+priorityClassName: "high-priority"
+
+# Extra environment for tuning
+extraEnvVars:
+  - name: GEODE_GC_PERCENT
+    value: "50"
+  - name: GEODE_MEMORY_LIMIT
+    value: "200GB"

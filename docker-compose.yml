@@ -9,8 +9,6 @@
 # Connect to Geode:
 #   docker compose exec geode geode shell
 
-version: '3.8'
-
 services:
   # Geode Database Server
   geode:
@@ -25,13 +23,13 @@ services:
     volumes:
       - geode-data:/var/lib/geode
       - geode-logs:/var/log/geode
-      - ./configs/server/development.yaml:/etc/geode/geode.yaml:ro
       - ./certs:/certs:ro
     environment:
       - GEODE_LOG_LEVEL=info
       - GEODE_DATA_DIR=/var/lib/geode
+    command: ["serve", "--data-dir", "/var/lib/geode", "--listen", "0.0.0.0:3141", "--log-level", "info", "--disable-auth"]
     healthcheck:
-      test: ["CMD", "geode", "shell", "-c", "RETURN 1"]
+      test: ["CMD", "geode", "query", "--server", "localhost:3141", "--insecure", "RETURN 1"]
       interval: 10s
       timeout: 5s
       retries: 5

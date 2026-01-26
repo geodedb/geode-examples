@@ -11,8 +11,6 @@
 #   docker compose -f docker/docker-compose.test.yml run test-harness
 #   docker compose -f docker/docker-compose.test.yml down -v
 
-version: '3.8'
-
 services:
   # Geode Database Server (primary)
   geode:
@@ -30,7 +28,7 @@ services:
     environment:
       - GEODE_LOG_LEVEL=debug
     healthcheck:
-      test: ["CMD", "geode", "shell", "-c", "RETURN 1"]
+      test: ["CMD", "geode", "query", "--server", "localhost:3141", "--insecure", "RETURN 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -56,7 +54,7 @@ services:
       - GEODE_LOG_LEVEL=debug
       - GEODE_TDE_KEY_FILE=/certs/tde.key
     healthcheck:
-      test: ["CMD", "geode", "shell", "-c", "RETURN 1"]
+      test: ["CMD", "geode", "query", "--server", "localhost:3141", "--insecure", "RETURN 1"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -118,7 +118,7 @@ log_info "Waiting for Geode to be healthy..."
 max_attempts=30
 attempt=1
 while [ $attempt -le $max_attempts ]; do
-    if docker compose exec -T geode geode shell -c "RETURN 1" &> /dev/null; then
+    if docker compose exec -T geode geode query --server localhost:3141 --insecure "RETURN 1" &> /dev/null; then
         log_info "Geode is healthy!"
         break
     fi

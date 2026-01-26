@@ -1,37 +1,11 @@
 # Geode Database Server Container
-# Used for running examples and verification tests
+# Uses pre-built binary for faster container builds
 #
 # Build context should be the geode repository root:
 #   docker build -f docker/Dockerfile.geode -t geodedb/geode:latest ../geode
 
-ARG ZIG_VERSION=0.15.1
-
-# Stage 1: Build Geode from source
-FROM debian:bookworm-slim AS builder
-
-ARG ZIG_VERSION
-
-RUN apt-get update && apt-get install -y \
-    curl \
-    xz-utils \
-    ca-certificates \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Zig
-RUN curl -L "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" | tar -xJ -C /opt \
-    && ln -s /opt/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
-
-WORKDIR /build
-
-# Copy geode source (assumes build context is geode repo)
-COPY . .
-
-# Build release binary
-RUN make release
-
-# Stage 2: Runtime image
-FROM debian:bookworm-slim AS runtime
+# Runtime image
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -40,18 +14,16 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -s /bin/false geode \
-    && mkdir -p /var/lib/geode /var/log/geode /etc/geode /certs \
-    && chown -R geode:geode /var/lib/geode /var/log/geode
+    && mkdir -p /var/lib/geode /var/log/geode /certs \
+    && chown -R geode:geode /var/lib/geode /var/log/geode /certs
 
-# Copy Geode binary from builder
-COPY --from=builder /build/zig-out/bin/geode /usr/local/bin/geode
-
-# Copy default configuration
-COPY --from=builder /build/config/default.yaml /etc/geode/geode.yaml
+# Copy pre-built Geode binary
+COPY zig-out/bin/geode /usr/local/bin/geode
 
 # Health check script
-RUN echo '#!/bin/sh\ngeode shell -c "RETURN 1" >/dev/null 2>&1' > /usr/local/bin/healthcheck.sh \
-    && chmod +x /usr/local/bin/healthcheck.sh
+RUN echo '#!/bin/sh\ngeode query --server localhost:3141 --insecure "RETURN 1" >/dev/null 2>&1' > /usr/local/bin/healthcheck.sh \
+    && chmod +x /usr/local/bin/healthcheck.sh \
+    && chmod +x /usr/local/bin/geode
 
 USER geode
 
@@ -67,4 +39,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD ["/usr/local/bin/healthcheck.sh"]
 
 ENTRYPOINT ["geode"]
-CMD ["serve", "--config", "/etc/geode/geode.yaml"]
+CMD ["serve", "--data-dir", "/var/lib/geode", "--listen", "0.0.0.0:3141", "--log-level", "info"]
