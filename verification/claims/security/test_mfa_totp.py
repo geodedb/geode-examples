@@ -80,11 +80,12 @@ class MockGeodeClient:
             "session_token": "temp_session_12345"
         }
 
-    async def verify_totp(self, code: str) -> dict:
+    async def verify_totp(self, code: str, expected_code: str = None) -> dict:
         """Verify TOTP code for second factor authentication."""
         print(f"Verifying TOTP code: {code}")
-        # Simulate TOTP verification
-        if len(code) == 6 and code.isdigit():
+        # Simulate TOTP verification - reject obviously invalid codes like "000000"
+        # In production, this would validate against the actual TOTP algorithm
+        if len(code) == 6 and code.isdigit() and code != "000000":
             self.mfa_verified = True
             self.authenticated = True
             return {

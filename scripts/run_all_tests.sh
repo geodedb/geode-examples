@@ -23,6 +23,13 @@ CATEGORY="all"
 GEODE_HOST="${GEODE_HOST:-localhost:3141}"
 REPORTS_DIR="${PROJECT_ROOT}/reports"
 
+# Use venv Python if available
+if [ -f "${PROJECT_ROOT}/.venv/bin/python3" ]; then
+    PYTHON="${PROJECT_ROOT}/.venv/bin/python3"
+else
+    PYTHON="python3"
+fi
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -107,14 +114,11 @@ run_client_tests() {
         SKIPPED=$((SKIPPED + 1))
     fi
 
-    # Python client (syntax check - skip if pytest not available)
+    # Python client (build verification)
     if [ -f "${PROJECT_ROOT}/clients/python/requirements.txt" ]; then
         echo "Running Python client tests..."
-        if ! python3 -c "import pytest" 2>/dev/null; then
-            echo "pytest not installed" > "${REPORTS_DIR}/python-tests.log"
-            log_skip "Python client tests (pytest not installed)"
-            SKIPPED=$((SKIPPED + 1))
-        elif (cd "${PROJECT_ROOT}/clients/python" && python3 -m py_compile examples/*.py > "${REPORTS_DIR}/python-tests.log" 2>&1); then
+        # Find all Python files and syntax check them
+        if (cd "${PROJECT_ROOT}/clients/python" && find examples -name "*.py" -exec $PYTHON -m py_compile {} \; > "${REPORTS_DIR}/python-tests.log" 2>&1); then
             log_success "Python client tests"
             PASSED=$((PASSED + 1))
         else
@@ -162,11 +166,11 @@ run_feature_tests() {
 
     if [ -d "${PROJECT_ROOT}/verification/claims/features" ]; then
         echo "Running feature verification..."
-        if ! python3 -c "import pytest" 2>/dev/null; then
+        if ! $PYTHON -c "import pytest" 2>/dev/null; then
             echo "pytest not installed" > "${REPORTS_DIR}/features.log"
             log_skip "Feature verification tests (pytest not installed)"
             SKIPPED=$((SKIPPED + 1))
-        elif python3 -m pytest "${PROJECT_ROOT}/verification/claims/features/" \
+        elif $PYTHON -m pytest "${PROJECT_ROOT}/verification/claims/features/" \
             -v --tb=short \
             --junitxml="${REPORTS_DIR}/features.xml" \
             > "${REPORTS_DIR}/features.log" 2>&1; then
@@ -187,11 +191,11 @@ run_security_tests() {
 
     if [ -d "${PROJECT_ROOT}/verification/claims/security" ]; then
         echo "Running security verification..."
-        if ! python3 -c "import pytest" 2>/dev/null; then
+        if ! $PYTHON -c "import pytest" 2>/dev/null; then
             echo "pytest not installed" > "${REPORTS_DIR}/security.log"
             log_skip "Security verification tests (pytest not installed)"
             SKIPPED=$((SKIPPED + 1))
-        elif python3 -m pytest "${PROJECT_ROOT}/verification/claims/security/" \
+        elif $PYTHON -m pytest "${PROJECT_ROOT}/verification/claims/security/" \
             -v --tb=short \
             --junitxml="${REPORTS_DIR}/security.xml" \
             > "${REPORTS_DIR}/security.log" 2>&1; then
@@ -219,7 +223,7 @@ run_performance_tests() {
     if [ -d "${PROJECT_ROOT}/benchmarks/load-tests" ]; then
         echo "Running performance benchmarks..."
         # Run with reduced duration for CI
-        if python3 "${PROJECT_ROOT}/benchmarks/load-tests/read_only.py" \
+        if $PYTHON "${PROJECT_ROOT}/benchmarks/load-tests/read_only.py" \
             --duration 30 \
             --output "${REPORTS_DIR}/perf-read-only.json" \
             > "${REPORTS_DIR}/perf-read-only.log" 2>&1; then
