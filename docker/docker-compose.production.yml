@@ -9,10 +9,7 @@
 
 services:
   geode:
-    build:
-      context: ../geode
-      dockerfile: ../geode-examples/docker/Dockerfile.geode
-    image: geodedb/geode:production
+    image: registry.gitlab.com/devnw/codepros/geode/geode:latest
     container_name: geode-production
     ports:
       - "3141:3141"   # QUIC server

@@ -14,10 +14,7 @@
 services:
   # Geode Database Server (primary)
   geode:
-    build:
-      context: ../../geode
-      dockerfile: ../geode-examples/docker/Dockerfile.geode
-    image: geodedb/geode:test
+    image: registry.gitlab.com/devnw/codepros/geode/geode:test
     container_name: geode-test-server
     ports:
       - "3141:3141"
@@ -38,10 +35,7 @@ services:
 
   # Geode with TDE enabled (for security tests)
   geode-secure:
-    build:
-      context: ../../geode
-      dockerfile: ../geode-examples/docker/Dockerfile.geode
-    image: geodedb/geode:test
+    image: registry.gitlab.com/devnw/codepros/geode/geode:test
     container_name: geode-test-secure
     ports:
       - "3142:3141"
