@@ -45,6 +45,13 @@ done
 
 mkdir -p "$OUTPUT_DIR"
 
+# Check if Python reporters are available
+REPORTERS_DIR="${PROJECT_ROOT}/verification/reporters"
+USE_PYTHON_REPORTERS=false
+if command -v python3 &> /dev/null && [ -f "${REPORTERS_DIR}/json_report.py" ]; then
+    USE_PYTHON_REPORTERS=true
+fi
+
 echo "Generating verification report..."
 
 # Collect all test results
@@ -66,14 +73,22 @@ collect_results() {
 if [ "$GENERATE_JSON" = true ]; then
     echo "Generating JSON report..."
 
-    read -r passed failed skipped <<< "$(collect_results)"
-    total=$((passed + failed + skipped))
-    pass_rate=0
-    if [ $total -gt 0 ]; then
-        pass_rate=$(echo "scale=1; $passed * 100 / $total" | bc)
-    fi
+    if [ "$USE_PYTHON_REPORTERS" = true ]; then
+        # Use the comprehensive Python reporter
+        python3 "${REPORTERS_DIR}/json_report.py" \
+            --results-dir "${REPORTS_DIR}" \
+            --docs-dir "${PROJECT_ROOT}/docs" \
+            --output "${OUTPUT_DIR}/verification-report.json"
+    else
+        # Fallback to basic bash implementation
+        read -r passed failed skipped <<< "$(collect_results)"
+        total=$((passed + failed + skipped))
+        pass_rate=0
+        if [ $total -gt 0 ]; then
+            pass_rate=$(echo "scale=1; $passed * 100 / $total" | bc)
+        fi
 
-    cat > "${OUTPUT_DIR}/verification-report.json" << EOF
+        cat > "${OUTPUT_DIR}/verification-report.json" << EOF
 {
   "generated_at": "$(date -Iseconds)",
   "repository": "geode-examples",
@@ -114,6 +129,7 @@ if [ "$GENERATE_JSON" = true ]; then
   }
 }
 EOF
+    fi
     echo "  -> ${OUTPUT_DIR}/verification-report.json"
 fi
 
@@ -121,10 +137,17 @@ fi
 if [ "$GENERATE_HTML" = true ]; then
     echo "Generating HTML report..."
 
-    read -r passed failed skipped <<< "$(collect_results)"
-    total=$((passed + failed + skipped))
+    if [ "$USE_PYTHON_REPORTERS" = true ] && [ -f "${OUTPUT_DIR}/verification-report.json" ]; then
+        # Use the comprehensive Python HTML reporter
+        python3 "${REPORTERS_DIR}/html_report.py" \
+            --json-report "${OUTPUT_DIR}/verification-report.json" \
+            --output "${OUTPUT_DIR}/index.html"
+    else
+        # Fallback to basic bash implementation
+        read -r passed failed skipped <<< "$(collect_results)"
+        total=$((passed + failed + skipped))
 
-    cat > "${OUTPUT_DIR}/index.html" << 'HTMLEOF'
+        cat > "${OUTPUT_DIR}/index.html" << 'HTMLEOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -280,6 +303,7 @@ if [ "$GENERATE_HTML" = true ]; then
 </body>
 </html>
 HTMLEOF
+    fi
     echo "  -> ${OUTPUT_DIR}/index.html"
 fi
 
@@ -287,30 +311,42 @@ fi
 if [ "$GENERATE_BADGE" = true ]; then
     echo "Generating badge..."
 
-    read -r passed failed skipped <<< "$(collect_results)"
-    total=$((passed + failed))
-
-    if [ $total -eq 0 ]; then
-        label="pending"
-        color="yellow"
-        value="0%"
-    else
-        pct=$((passed * 100 / total))
-        value="${pct}%"
-        if [ $pct -ge 90 ]; then
-            color="brightgreen"
-            label="passing"
-        elif [ $pct -ge 70 ]; then
-            color="yellow"
-            label="partial"
-        else
-            color="red"
-            label="failing"
+    if [ "$USE_PYTHON_REPORTERS" = true ] && [ -f "${OUTPUT_DIR}/verification-report.json" ]; then
+        # Use the comprehensive Python badge generator
+        python3 "${REPORTERS_DIR}/badge_generator.py" \
+            --json-report "${OUTPUT_DIR}/verification-report.json" \
+            --output-dir "${OUTPUT_DIR}" \
+            --type all
+        # Rename for backward compatibility
+        if [ -f "${OUTPUT_DIR}/badge-status.svg" ]; then
+            cp "${OUTPUT_DIR}/badge-status.svg" "${OUTPUT_DIR}/verification-badge.svg"
         fi
-    fi
+    else
+        # Fallback to basic bash implementation
+        read -r passed failed skipped <<< "$(collect_results)"
+        total=$((passed + failed))
 
-    # Generate SVG badge
-    cat > "${OUTPUT_DIR}/verification-badge.svg" << SVGEOF
+        if [ $total -eq 0 ]; then
+            label="pending"
+            color="yellow"
+            value="0%"
+        else
+            pct=$((passed * 100 / total))
+            value="${pct}%"
+            if [ $pct -ge 90 ]; then
+                color="brightgreen"
+                label="passing"
+            elif [ $pct -ge 70 ]; then
+                color="yellow"
+                label="partial"
+            else
+                color="red"
+                label="failing"
+            fi
+        fi
+
+        # Generate SVG badge
+        cat > "${OUTPUT_DIR}/verification-badge.svg" << SVGEOF
 <svg xmlns="http://www.w3.org/2000/svg" width="140" height="20">
   <linearGradient id="b" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -330,6 +366,7 @@ if [ "$GENERATE_BADGE" = true ]; then
   </g>
 </svg>
 SVGEOF
+    fi
     echo "  -> ${OUTPUT_DIR}/verification-badge.svg"
 fi
 
