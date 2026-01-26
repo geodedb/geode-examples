@@ -23,6 +23,7 @@ DOCKER_COMPOSE ?= docker compose
 GEODE_HOST ?= localhost:3141
 REPORTS_DIR ?= reports
 PUBLIC_DIR ?= public
+PYTHON ?= python3
 
 # Default target
 all: setup test verify report
@@ -130,16 +131,16 @@ benchmark-scale: ## Run scalability tests (long running)
 benchmark-standard: ## Run standard CI/CD benchmark (100K nodes, 100 connections)
 	@echo "Running standard benchmark profile..."
 	@mkdir -p $(REPORTS_DIR)
-	@python benchmarks/data-generators/scale_test.py \
+	@$(PYTHON) benchmarks/data-generators/scale_test.py \
 		--nodes 100000 \
 		--rels-per-node 5 \
 		--batch-size 5000 \
 		--output $(REPORTS_DIR)/scale_standard.json
-	@python benchmarks/load-tests/read_only.py \
+	@$(PYTHON) benchmarks/load-tests/read_only.py \
 		--workers 100 \
 		--duration 300 \
 		--output $(REPORTS_DIR)/perf_standard_read.json
-	@python benchmarks/load-tests/concurrent_connections.py \
+	@$(PYTHON) benchmarks/load-tests/concurrent_connections.py \
 		--target 100 \
 		--batch-size 10 \
 		--output $(REPORTS_DIR)/perf_standard_conn.json
@@ -148,16 +149,16 @@ benchmark-full: ## Run full benchmark (1M nodes, 1K connections) - 30+ min
 	@echo "Running full benchmark profile..."
 	@echo "Warning: This will take 30+ minutes"
 	@mkdir -p $(REPORTS_DIR)
-	@python benchmarks/data-generators/scale_test.py \
+	@$(PYTHON) benchmarks/data-generators/scale_test.py \
 		--nodes 1000000 \
 		--rels-per-node 5 \
 		--batch-size 10000 \
 		--output $(REPORTS_DIR)/scale_full.json
-	@python benchmarks/load-tests/read_only.py \
+	@$(PYTHON) benchmarks/load-tests/read_only.py \
 		--workers 100 \
 		--duration 600 \
 		--output $(REPORTS_DIR)/perf_full_read.json
-	@python benchmarks/load-tests/concurrent_connections.py \
+	@$(PYTHON) benchmarks/load-tests/concurrent_connections.py \
 		--target 1000 \
 		--batch-size 50 \
 		--output $(REPORTS_DIR)/perf_full_conn.json
@@ -167,19 +168,58 @@ benchmark-extreme: ## Run extreme benchmark (100M nodes, 10K connections) - 24+ 
 	@echo "Warning: This requires significant resources and may take 24+ hours"
 	@echo "Recommended: 256GB+ RAM, 32+ cores, 2TB+ NVMe SSD"
 	@mkdir -p $(REPORTS_DIR)
-	@python benchmarks/data-generators/scale_test.py \
+	@$(PYTHON) benchmarks/data-generators/scale_test.py \
 		--nodes 100000000 \
 		--rels-per-node 10 \
 		--batch-size 50000 \
 		--output $(REPORTS_DIR)/scale_extreme.json
-	@python benchmarks/load-tests/read_only.py \
+	@$(PYTHON) benchmarks/load-tests/read_only.py \
 		--workers 1000 \
 		--duration 3600 \
 		--output $(REPORTS_DIR)/perf_extreme_read.json
-	@python benchmarks/load-tests/concurrent_connections.py \
+	@$(PYTHON) benchmarks/load-tests/concurrent_connections.py \
 		--target 10000 \
 		--batch-size 500 \
 		--output $(REPORTS_DIR)/perf_extreme_conn.json
+
+##@ High-Throughput Benchmarks
+
+benchmark-hightp-quick: ## Quick high-throughput test (30s, 20 workers)
+	@echo "Running quick high-throughput benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/high_throughput.py \
+		--workers 20 \
+		--duration 30 \
+		--batch-size 10 \
+		--output $(REPORTS_DIR)/hightp_quick.json
+
+benchmark-hightp-standard: ## Standard high-throughput test (60s, 50 workers)
+	@echo "Running standard high-throughput benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/high_throughput.py \
+		--workers 50 \
+		--duration 60 \
+		--batch-size 20 \
+		--output $(REPORTS_DIR)/hightp_standard.json
+
+benchmark-hightp-intensive: ## Intensive high-throughput test (300s, 100 workers)
+	@echo "Running intensive high-throughput benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/high_throughput.py \
+		--workers 100 \
+		--duration 300 \
+		--batch-size 50 \
+		--output $(REPORTS_DIR)/hightp_intensive.json
+
+benchmark-hightp-max: ## Maximum high-throughput test (600s, 200 workers, 100 batch)
+	@echo "Running maximum high-throughput benchmark..."
+	@echo "Warning: This is a stress test and may require significant resources"
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/high_throughput.py \
+		--workers 200 \
+		--duration 600 \
+		--batch-size 100 \
+		--output $(REPORTS_DIR)/hightp_max.json
 
 ##@ Production Deployment
 
