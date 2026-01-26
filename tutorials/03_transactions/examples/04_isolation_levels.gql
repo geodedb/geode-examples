@@ -1,0 +1,152 @@
+-- Tutorial 3: Transactions - Isolation Levels
+-- CANARY: REQ=REQ-TXN-ISOLATION-001; FEATURE="IsolationLevels"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Geode supports 6 isolation levels as documented:
+-- - READ UNCOMMITTED
+-- - READ COMMITTED (default)
+-- - REPEATABLE READ
+-- - SNAPSHOT
+-- - SERIALIZABLE
+-- - LINEARIZABLE
+
+-- ============================================
+-- Setup
+-- ============================================
+
+CREATE (:Counter {name: 'page_views', value: 100});
+CREATE (:Counter {name: 'unique_visitors', value: 50});
+
+-- ============================================
+-- READ COMMITTED (Default)
+-- ============================================
+
+-- Only sees committed changes from other transactions
+BEGIN TRANSACTION;  -- Defaults to READ COMMITTED
+
+MATCH (c:Counter {name: 'page_views'})
+RETURN c.value AS current_views;
+
+-- In another session, if someone commits an update to page_views,
+-- subsequent reads in this transaction might see the new value.
+-- This is "non-repeatable read" - allowed in READ COMMITTED.
+
+COMMIT;
+
+-- ============================================
+-- REPEATABLE READ
+-- ============================================
+
+-- Same query returns same results throughout transaction
+BEGIN TRANSACTION
+ISOLATION LEVEL REPEATABLE READ;
+
+MATCH (c:Counter {name: 'page_views'})
+RETURN c.value AS first_read;
+
+-- Even if another transaction commits changes to page_views,
+-- we'll see the same value as our first read.
+
+MATCH (c:Counter {name: 'page_views'})
+RETURN c.value AS second_read;  -- Same as first_read
+
+COMMIT;
+
+-- ============================================
+-- SERIALIZABLE
+-- ============================================
+
+-- Strongest isolation: transactions appear to run sequentially
+BEGIN TRANSACTION
+ISOLATION LEVEL SERIALIZABLE;
+
+-- Read current values
+MATCH (c:Counter)
+RETURN c.name, c.value;
+
+-- Increment all counters
+MATCH (c:Counter)
+SET c.value = c.value + 1;
+
+-- No other transaction can modify these counters
+-- until we commit or rollback
+
+COMMIT;
+
+-- ============================================
+-- SNAPSHOT
+-- ============================================
+
+-- See consistent snapshot from transaction start
+BEGIN TRANSACTION
+ISOLATION LEVEL SNAPSHOT;
+
+-- All reads see data as of transaction start
+MATCH (c:Counter)
+RETURN c.name, c.value AS snapshot_value;
+
+-- Even if other transactions commit, we see our snapshot
+-- (Similar to REPEATABLE READ but uses MVCC)
+
+COMMIT;
+
+-- ============================================
+-- Demonstrating Isolation Differences
+-- ============================================
+
+-- Reset counter
+MATCH (c:Counter {name: 'page_views'})
+SET c.value = 100;
+
+-- In a real scenario, run these in separate sessions:
+
+-- Session 1: READ COMMITTED
+-- BEGIN TRANSACTION;
+-- MATCH (c:Counter {name: 'page_views'}) RETURN c.value;  -- 100
+-- -- Wait for Session 2 to commit
+-- MATCH (c:Counter {name: 'page_views'}) RETURN c.value;  -- 150 (sees committed change)
+-- COMMIT;
+
+-- Session 2:
+-- BEGIN TRANSACTION;
+-- MATCH (c:Counter {name: 'page_views'}) SET c.value = 150;
+-- COMMIT;
+
+-- ============================================
+-- Serialization Failures
+-- ============================================
+
+-- With SERIALIZABLE, concurrent conflicting transactions
+-- may fail with serialization error:
+
+-- Session 1:
+-- BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- MATCH (c:Counter {name: 'page_views'}) SET c.value = c.value + 10;
+-- -- Don't commit yet
+
+-- Session 2:
+-- BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- MATCH (c:Counter {name: 'page_views'}) SET c.value = c.value + 20;
+-- COMMIT;  -- May fail with serialization error
+
+-- Best practice: Retry on serialization failure with exponential backoff
+
+-- ============================================
+-- Choosing the Right Isolation Level
+-- ============================================
+
+-- READ COMMITTED: Good default, best performance
+--   Use for: Most OLTP workloads
+
+-- REPEATABLE READ: Consistent reads within transaction
+--   Use for: Reports, analytics within transaction
+
+-- SERIALIZABLE: Full isolation, some performance cost
+--   Use for: Financial transactions, inventory management
+
+-- LINEARIZABLE: Strongest guarantees, highest latency
+--   Use for: Distributed consensus, leader election
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

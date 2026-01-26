@@ -1,0 +1,90 @@
+-- Tutorial 2: Pattern Matching - Variable Length Paths
+-- CANARY: REQ=REQ-GQL-PATH-001; FEATURE="VariableLengthPaths"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Setup: Create a chain of people
+CREATE (:Person {name: 'Alice'});
+CREATE (:Person {name: 'Bob'});
+CREATE (:Person {name: 'Charlie'});
+CREATE (:Person {name: 'Diana'});
+CREATE (:Person {name: 'Eve'});
+
+-- Create KNOWS chain: Alice -> Bob -> Charlie -> Diana -> Eve
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+CREATE (a)-[:KNOWS]->(b);
+
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'})
+CREATE (b)-[:KNOWS]->(c);
+
+MATCH (c:Person {name: 'Charlie'}), (d:Person {name: 'Diana'})
+CREATE (c)-[:KNOWS]->(d);
+
+MATCH (d:Person {name: 'Diana'}), (e:Person {name: 'Eve'})
+CREATE (d)-[:KNOWS]->(e);
+
+-- ============================================
+-- Fixed Length Paths
+-- ============================================
+
+-- Exactly 2 hops from Alice
+MATCH (a:Person {name: 'Alice'})-[:KNOWS*2]->(b:Person)
+RETURN a.name AS start, b.name AS two_hops_away;
+
+-- Exactly 3 hops from Alice
+MATCH (a:Person {name: 'Alice'})-[:KNOWS*3]->(b:Person)
+RETURN a.name AS start, b.name AS three_hops_away;
+
+-- ============================================
+-- Range Length Paths
+-- ============================================
+
+-- Between 1 and 3 hops
+MATCH (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person)
+RETURN b.name AS reachable_1_to_3_hops;
+
+-- At least 2 hops
+MATCH (a:Person {name: 'Alice'})-[:KNOWS*2..]->(b:Person)
+RETURN b.name AS at_least_2_hops;
+
+-- At most 2 hops
+MATCH (a:Person {name: 'Alice'})-[:KNOWS*..2]->(b:Person)
+RETURN b.name AS at_most_2_hops;
+
+-- Any number of hops (all reachable)
+MATCH (a:Person {name: 'Alice'})-[:KNOWS*]->(b:Person)
+RETURN b.name AS all_reachable;
+
+-- ============================================
+-- Named Paths
+-- ============================================
+
+-- Assign path to variable
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person)
+RETURN
+    b.name AS destination,
+    length(path) AS hops;
+
+-- Get nodes in path
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*]->(b:Person {name: 'Eve'})
+RETURN [n IN nodes(path) | n.name] AS path_names;
+
+-- ============================================
+-- Path Functions
+-- ============================================
+
+-- Get all nodes and relationships
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*2..4]->(b:Person)
+RETURN
+    length(path) AS path_length,
+    [n IN nodes(path) | n.name] AS all_nodes;
+
+-- Get first and last node
+MATCH path = (a:Person)-[:KNOWS*]->(b:Person)
+WHERE a.name = 'Alice'
+RETURN
+    head(nodes(path)).name AS start,
+    last(nodes(path)).name AS end;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

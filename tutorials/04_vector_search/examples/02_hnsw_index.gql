@@ -1,0 +1,97 @@
+-- Tutorial 4: Vector Search - HNSW Index
+-- CANARY: REQ=REQ-VECTOR-HNSW-001; FEATURE="HNSWIndex"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Setup: Create documents with embeddings
+-- ============================================
+
+-- Create sample documents (8-dimensional embeddings for simplicity)
+CREATE (:Document {id: 'doc1', title: 'Graph Database Basics', category: 'database',
+    embedding: vectorf32([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])});
+CREATE (:Document {id: 'doc2', title: 'Advanced Graph Queries', category: 'database',
+    embedding: vectorf32([0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85])});
+CREATE (:Document {id: 'doc3', title: 'Machine Learning Intro', category: 'ml',
+    embedding: vectorf32([0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1])});
+CREATE (:Document {id: 'doc4', title: 'Neural Network Design', category: 'ml',
+    embedding: vectorf32([0.75, 0.65, 0.55, 0.45, 0.35, 0.25, 0.15, 0.05])});
+CREATE (:Document {id: 'doc5', title: 'SQL Fundamentals', category: 'database',
+    embedding: vectorf32([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])});
+
+-- ============================================
+-- Create HNSW Index
+-- ============================================
+
+-- Create HNSW index for cosine similarity search
+CREATE INDEX doc_embedding_hnsw
+ON Document(embedding)
+USING HNSW
+OPTIONS (
+    dimensions: 8,
+    metric: 'cosine',
+    ef_construction: 128,
+    m: 16
+);
+
+-- ============================================
+-- Similarity Search with Index
+-- ============================================
+
+-- Query vector (similar to database documents)
+WITH vectorf32([0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82]) AS query_vector
+MATCH (d:Document)
+WHERE cosineSimilarity(d.embedding, query_vector) > 0.9
+RETURN d.title, cosineSimilarity(d.embedding, query_vector) AS similarity
+ORDER BY similarity DESC
+LIMIT 5;
+
+-- ============================================
+-- K-Nearest Neighbors Search
+-- ============================================
+
+-- Find top 3 most similar documents
+WITH vectorf32([0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82]) AS query_vector
+MATCH (d:Document)
+WITH d, cosineSimilarity(d.embedding, query_vector) AS similarity
+ORDER BY similarity DESC
+LIMIT 3
+RETURN d.title, d.category, round(similarity, 4) AS similarity;
+
+-- ============================================
+-- Hybrid Search: Vector + Filters
+-- ============================================
+
+-- Semantic search within a category
+WITH vectorf32([0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82]) AS query_vector
+MATCH (d:Document)
+WHERE d.category = 'database'
+  AND cosineSimilarity(d.embedding, query_vector) > 0.8
+RETURN d.title, cosineSimilarity(d.embedding, query_vector) AS similarity
+ORDER BY similarity DESC;
+
+-- ============================================
+-- Different Metrics
+-- ============================================
+
+-- L2 distance (Euclidean) - smaller is more similar
+WITH vectorf32([0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82]) AS query_vector
+MATCH (d:Document)
+WITH d, euclideanDistance(d.embedding, query_vector) AS distance
+WHERE distance < 0.5
+RETURN d.title, round(distance, 4) AS distance
+ORDER BY distance;
+
+-- ============================================
+-- Index Management
+-- ============================================
+
+-- View index (if supported)
+-- SHOW INDEXES;
+
+-- Drop index when no longer needed
+-- DROP INDEX doc_embedding_hnsw;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+-- DROP INDEX doc_embedding_hnsw;
+MATCH (n) DETACH DELETE n;

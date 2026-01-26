@@ -1,0 +1,97 @@
+-- Tutorial 2: Pattern Matching - Quantified Patterns
+-- CANARY: REQ=REQ-GQL-QUANTIFIED-001; FEATURE="QuantifiedPatterns"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Setup: Create a social network
+CREATE (:Person {name: 'Alice'});
+CREATE (:Person {name: 'Bob'});
+CREATE (:Person {name: 'Charlie'});
+CREATE (:Person {name: 'Diana'});
+CREATE (:Person {name: 'Eve'});
+
+-- Create FOLLOWS relationships (directed social graph)
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+CREATE (a)-[:FOLLOWS]->(b);
+
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'})
+CREATE (b)-[:FOLLOWS]->(c);
+
+MATCH (c:Person {name: 'Charlie'}), (d:Person {name: 'Diana'})
+CREATE (c)-[:FOLLOWS]->(d);
+
+MATCH (d:Person {name: 'Diana'}), (e:Person {name: 'Eve'})
+CREATE (d)-[:FOLLOWS]->(e);
+
+-- Additional connections for richer patterns
+MATCH (a:Person {name: 'Alice'}), (c:Person {name: 'Charlie'})
+CREATE (a)-[:FOLLOWS]->(c);
+
+MATCH (b:Person {name: 'Bob'}), (d:Person {name: 'Diana'})
+CREATE (b)-[:FOLLOWS]->(d);
+
+-- ============================================
+-- Pattern Predicates
+-- ============================================
+
+-- EXISTS pattern: Find people who follow someone
+MATCH (p:Person)
+WHERE EXISTS { (p)-[:FOLLOWS]->() }
+RETURN p.name AS has_followees;
+
+-- NOT EXISTS: Find people who don't follow anyone
+MATCH (p:Person)
+WHERE NOT EXISTS { (p)-[:FOLLOWS]->() }
+RETURN p.name AS follows_nobody;
+
+-- EXISTS with conditions
+MATCH (p:Person)
+WHERE EXISTS { (p)-[:FOLLOWS]->(f:Person) WHERE f.name = 'Charlie' }
+RETURN p.name AS follows_charlie;
+
+-- ============================================
+-- COUNT Patterns
+-- ============================================
+
+-- Find people with more than 1 followee
+MATCH (p:Person)
+WHERE COUNT { (p)-[:FOLLOWS]->() } > 1
+RETURN p.name AS follows_multiple;
+
+-- Find people with exactly 1 follower
+MATCH (p:Person)
+WHERE COUNT { ()-[:FOLLOWS]->(p) } = 1
+RETURN p.name AS has_one_follower;
+
+-- ============================================
+-- Pattern Comprehensions
+-- ============================================
+
+-- Inline pattern matching to get lists
+MATCH (p:Person)
+RETURN
+    p.name,
+    [(p)-[:FOLLOWS]->(f) | f.name] AS follows,
+    [(follower)-[:FOLLOWS]->(p) | follower.name] AS followers;
+
+-- ============================================
+-- Multiple Patterns
+-- ============================================
+
+-- Match multiple patterns in one query
+MATCH (a:Person)-[:FOLLOWS]->(b:Person),
+      (b)-[:FOLLOWS]->(c:Person)
+WHERE a.name = 'Alice'
+RETURN a.name, b.name AS intermediate, c.name AS end;
+
+-- ============================================
+-- Optional Match
+-- ============================================
+
+-- Like LEFT JOIN - returns nulls if no match
+MATCH (p:Person)
+OPTIONAL MATCH (p)-[:FOLLOWS]->(f:Person)
+RETURN p.name, f.name AS follows;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

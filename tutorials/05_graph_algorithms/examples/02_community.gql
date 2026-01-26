@@ -1,0 +1,127 @@
+-- Tutorial 5: Graph Algorithms - Community Detection
+-- CANARY: REQ=REQ-ALGO-COMMUNITY-001; FEATURE="CommunityDetection"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Setup: Create Communities
+-- ============================================
+
+-- Group 1: Tech team
+CREATE (:Person {name: 'Alice', team: 'tech'});
+CREATE (:Person {name: 'Bob', team: 'tech'});
+CREATE (:Person {name: 'Charlie', team: 'tech'});
+
+-- Group 2: Marketing team
+CREATE (:Person {name: 'Diana', team: 'marketing'});
+CREATE (:Person {name: 'Eve', team: 'marketing'});
+CREATE (:Person {name: 'Frank', team: 'marketing'});
+
+-- Group 3: Sales team
+CREATE (:Person {name: 'Grace', team: 'sales'});
+CREATE (:Person {name: 'Henry', team: 'sales'});
+CREATE (:Person {name: 'Ivy', team: 'sales'});
+
+-- Intra-team connections (dense)
+-- Tech team
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'}) CREATE (a)-[:KNOWS]->(b), (b)-[:KNOWS]->(a);
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'}) CREATE (b)-[:KNOWS]->(c), (c)-[:KNOWS]->(b);
+MATCH (a:Person {name: 'Alice'}), (c:Person {name: 'Charlie'}) CREATE (a)-[:KNOWS]->(c), (c)-[:KNOWS]->(a);
+
+-- Marketing team
+MATCH (d:Person {name: 'Diana'}), (e:Person {name: 'Eve'}) CREATE (d)-[:KNOWS]->(e), (e)-[:KNOWS]->(d);
+MATCH (e:Person {name: 'Eve'}), (f:Person {name: 'Frank'}) CREATE (e)-[:KNOWS]->(f), (f)-[:KNOWS]->(e);
+MATCH (d:Person {name: 'Diana'}), (f:Person {name: 'Frank'}) CREATE (d)-[:KNOWS]->(f), (f)-[:KNOWS]->(d);
+
+-- Sales team
+MATCH (g:Person {name: 'Grace'}), (h:Person {name: 'Henry'}) CREATE (g)-[:KNOWS]->(h), (h)-[:KNOWS]->(g);
+MATCH (h:Person {name: 'Henry'}), (i:Person {name: 'Ivy'}) CREATE (h)-[:KNOWS]->(i), (i)-[:KNOWS]->(h);
+MATCH (g:Person {name: 'Grace'}), (i:Person {name: 'Ivy'}) CREATE (g)-[:KNOWS]->(i), (i)-[:KNOWS]->(g);
+
+-- Inter-team connections (sparse - bridges)
+MATCH (c:Person {name: 'Charlie'}), (d:Person {name: 'Diana'}) CREATE (c)-[:KNOWS]->(d);
+MATCH (f:Person {name: 'Frank'}), (g:Person {name: 'Grace'}) CREATE (f)-[:KNOWS]->(g);
+
+-- ============================================
+-- Weakly Connected Components
+-- ============================================
+
+-- Find all connected components (ignoring direction)
+CALL gds.wcc.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'KNOWS'
+})
+YIELD nodeId, componentId
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN componentId, collect(p.name) AS members
+ORDER BY componentId;
+
+-- ============================================
+-- Strongly Connected Components
+-- ============================================
+
+-- For directed graphs: find strongly connected components
+CALL gds.scc.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'KNOWS'
+})
+YIELD nodeId, componentId
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN componentId, collect(p.name) AS members
+ORDER BY size(collect(p.name)) DESC;
+
+-- ============================================
+-- Louvain Algorithm
+-- ============================================
+
+-- Community detection by modularity optimization
+CALL gds.louvain.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'KNOWS'
+})
+YIELD nodeId, communityId
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN communityId, collect(p.name) AS members, count(*) AS size
+ORDER BY size DESC;
+
+-- ============================================
+-- Label Propagation
+-- ============================================
+
+-- Fast community detection
+CALL gds.labelPropagation.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'KNOWS',
+    maxIterations: 10
+})
+YIELD nodeId, communityId
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN communityId, collect(p.name) AS members
+ORDER BY communityId;
+
+-- ============================================
+-- Validate Against Known Teams
+-- ============================================
+
+-- Compare detected communities with known team labels
+CALL gds.louvain.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'KNOWS'
+})
+YIELD nodeId, communityId
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN communityId, p.team, collect(p.name) AS members
+ORDER BY communityId, p.team;
+
+-- ============================================
+-- Find Bridge Nodes
+-- ============================================
+
+-- People who connect different communities
+MATCH (p:Person)-[:KNOWS]->(other:Person)
+WHERE p.team <> other.team
+RETURN p.name, p.team, collect(DISTINCT other.team) AS connected_teams
+ORDER BY size(collect(DISTINCT other.team)) DESC;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

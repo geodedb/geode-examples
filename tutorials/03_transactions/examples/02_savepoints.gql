@@ -1,0 +1,104 @@
+-- Tutorial 3: Transactions - Savepoints
+-- CANARY: REQ=REQ-TXN-SAVEPOINT-001; FEATURE="Savepoints"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Savepoint Basics
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Phase 1: Create order
+CREATE (:Order {id: 'order_001', status: 'created', total: 0});
+
+-- Create first savepoint
+SAVEPOINT after_order_created;
+
+-- Phase 2: Add items
+CREATE (:OrderItem {order_id: 'order_001', product: 'Widget A', qty: 2, price: 25.00});
+CREATE (:OrderItem {order_id: 'order_001', product: 'Widget B', qty: 1, price: 50.00});
+
+-- Update order total
+MATCH (o:Order {id: 'order_001'})
+SET o.total = 100.00;
+
+-- Create second savepoint
+SAVEPOINT after_items_added;
+
+-- Phase 3: Try to apply a discount (might fail in real scenario)
+MATCH (o:Order {id: 'order_001'})
+SET o.discount = 10.00, o.total = o.total - 10.00;
+
+-- If discount logic was wrong, we can rollback to before it
+-- ROLLBACK TO after_items_added;  -- Uncomment to test rollback
+
+COMMIT;
+
+-- Verify final state
+MATCH (o:Order {id: 'order_001'})
+RETURN o.id, o.status, o.total, o.discount;
+
+MATCH (i:OrderItem {order_id: 'order_001'})
+RETURN i.product, i.qty, i.price;
+
+-- ============================================
+-- Savepoint with Partial Rollback
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Create user
+CREATE (:User {id: 'user_001', name: 'Alice', email: 'alice@example.com'});
+SAVEPOINT user_created;
+
+-- Create profile (optional, might fail)
+CREATE (:Profile {user_id: 'user_001', bio: 'Hello world', avatar: 'default.png'});
+SAVEPOINT profile_created;
+
+-- Try to link external account (might fail)
+CREATE (:ExternalAccount {user_id: 'user_001', provider: 'github', external_id: 'alice123'});
+
+-- Simulate failure - rollback to before external account
+ROLLBACK TO profile_created;
+
+-- Continue with valid operations
+MATCH (u:User {id: 'user_001'})
+SET u.status = 'active';
+
+COMMIT;
+
+-- Verify: User and Profile exist, but no ExternalAccount
+MATCH (u:User {id: 'user_001'}) RETURN u;
+MATCH (p:Profile {user_id: 'user_001'}) RETURN p;
+MATCH (e:ExternalAccount {user_id: 'user_001'}) RETURN e;  -- Should be empty
+
+-- ============================================
+-- Nested Savepoints
+-- ============================================
+
+BEGIN TRANSACTION;
+
+CREATE (:Project {id: 'proj_001', name: 'Main Project'});
+SAVEPOINT project_created;
+
+    CREATE (:Task {project_id: 'proj_001', name: 'Task 1', status: 'pending'});
+    SAVEPOINT task1_created;
+
+        CREATE (:Subtask {task_id: 'task_1', name: 'Subtask 1a'});
+        SAVEPOINT subtask_created;
+
+        -- Oops, subtask was wrong
+        ROLLBACK TO task1_created;  -- Removes subtask, keeps task
+
+    CREATE (:Task {project_id: 'proj_001', name: 'Task 2', status: 'pending'});
+
+COMMIT;
+
+-- Verify structure
+MATCH (p:Project {id: 'proj_001'}) RETURN p.name;
+MATCH (t:Task {project_id: 'proj_001'}) RETURN t.name;
+MATCH (s:Subtask) RETURN s.name;  -- Should be empty
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

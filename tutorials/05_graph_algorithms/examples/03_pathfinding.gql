@@ -1,0 +1,137 @@
+-- Tutorial 5: Graph Algorithms - Path Finding
+-- CANARY: REQ=REQ-ALGO-PATH-001; FEATURE="PathFinding"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Setup: Create Weighted Graph
+-- ============================================
+
+-- Create locations (cities)
+CREATE (:City {name: 'New York', lat: 40.7128, lon: -74.0060});
+CREATE (:City {name: 'Boston', lat: 42.3601, lon: -71.0589});
+CREATE (:City {name: 'Philadelphia', lat: 39.9526, lon: -75.1652});
+CREATE (:City {name: 'Washington DC', lat: 38.9072, lon: -77.0369});
+CREATE (:City {name: 'Chicago', lat: 41.8781, lon: -87.6298});
+CREATE (:City {name: 'Detroit', lat: 42.3314, lon: -83.0458});
+CREATE (:City {name: 'Pittsburgh', lat: 40.4406, lon: -79.9959});
+
+-- Create routes with distances (miles)
+MATCH (ny:City {name: 'New York'}), (boston:City {name: 'Boston'})
+CREATE (ny)-[:ROUTE {distance: 215}]->(boston), (boston)-[:ROUTE {distance: 215}]->(ny);
+
+MATCH (ny:City {name: 'New York'}), (philly:City {name: 'Philadelphia'})
+CREATE (ny)-[:ROUTE {distance: 95}]->(philly), (philly)-[:ROUTE {distance: 95}]->(ny);
+
+MATCH (philly:City {name: 'Philadelphia'}), (dc:City {name: 'Washington DC'})
+CREATE (philly)-[:ROUTE {distance: 140}]->(dc), (dc)-[:ROUTE {distance: 140}]->(philly);
+
+MATCH (ny:City {name: 'New York'}), (pitt:City {name: 'Pittsburgh'})
+CREATE (ny)-[:ROUTE {distance: 370}]->(pitt), (pitt)-[:ROUTE {distance: 370}]->(ny);
+
+MATCH (pitt:City {name: 'Pittsburgh'}), (chicago:City {name: 'Chicago'})
+CREATE (pitt)-[:ROUTE {distance: 460}]->(chicago), (chicago)-[:ROUTE {distance: 460}]->(pitt);
+
+MATCH (detroit:City {name: 'Detroit'}), (chicago:City {name: 'Chicago'})
+CREATE (detroit)-[:ROUTE {distance: 280}]->(chicago), (chicago)-[:ROUTE {distance: 280}]->(detroit);
+
+MATCH (pitt:City {name: 'Pittsburgh'}), (detroit:City {name: 'Detroit'})
+CREATE (pitt)-[:ROUTE {distance: 290}]->(detroit), (detroit)-[:ROUTE {distance: 290}]->(pitt);
+
+MATCH (dc:City {name: 'Washington DC'}), (pitt:City {name: 'Pittsburgh'})
+CREATE (dc)-[:ROUTE {distance: 245}]->(pitt), (pitt)-[:ROUTE {distance: 245}]->(dc);
+
+-- ============================================
+-- Shortest Path (Unweighted)
+-- ============================================
+
+-- Find shortest path by number of hops
+MATCH (start:City {name: 'New York'}), (end:City {name: 'Chicago'})
+MATCH path = shortestPath((start)-[:ROUTE*]-(end))
+RETURN
+    [n IN nodes(path) | n.name] AS route,
+    length(path) AS hops;
+
+-- ============================================
+-- Dijkstra (Weighted Shortest Path)
+-- ============================================
+
+-- Find shortest path by total distance
+MATCH (start:City {name: 'New York'}), (end:City {name: 'Chicago'})
+CALL gds.shortestPath.dijkstra.stream({
+    sourceNode: start,
+    targetNode: end,
+    relationshipType: 'ROUTE',
+    relationshipWeightProperty: 'distance'
+})
+YIELD path, totalCost
+RETURN
+    [n IN nodes(path) | n.name] AS route,
+    totalCost AS total_miles;
+
+-- ============================================
+-- All Shortest Paths
+-- ============================================
+
+-- Find all paths of minimum length
+MATCH (start:City {name: 'New York'}), (end:City {name: 'Detroit'})
+MATCH path = shortestPath((start)-[:ROUTE*]-(end))
+WITH length(path) AS min_length, start, end
+
+MATCH paths = (start)-[:ROUTE*]-(end)
+WHERE length(paths) = min_length
+RETURN [n IN nodes(paths) | n.name] AS route;
+
+-- ============================================
+-- BFS Traversal
+-- ============================================
+
+-- Breadth-first search from New York
+MATCH (start:City {name: 'New York'})
+CALL gds.bfs.stream({
+    sourceNode: start,
+    relationshipType: 'ROUTE'
+})
+YIELD nodeIds
+UNWIND nodeIds AS nodeId
+MATCH (c:City) WHERE id(c) = nodeId
+RETURN c.name AS city_order;
+
+-- ============================================
+-- DFS Traversal
+-- ============================================
+
+-- Depth-first search from New York
+MATCH (start:City {name: 'New York'})
+CALL gds.dfs.stream({
+    sourceNode: start,
+    relationshipType: 'ROUTE'
+})
+YIELD nodeIds
+UNWIND nodeIds AS nodeId
+MATCH (c:City) WHERE id(c) = nodeId
+RETURN c.name AS city_order;
+
+-- ============================================
+-- Path Analysis
+-- ============================================
+
+-- Calculate total distance for each possible route
+MATCH path = (start:City {name: 'New York'})-[:ROUTE*2..4]-(end:City {name: 'Chicago'})
+WITH path, reduce(total = 0, r IN relationships(path) | total + r.distance) AS total_distance
+RETURN
+    [n IN nodes(path) | n.name] AS route,
+    total_distance AS miles
+ORDER BY total_distance
+LIMIT 5;
+
+-- ============================================
+-- Reachability
+-- ============================================
+
+-- What cities can be reached from Boston in N hops?
+MATCH (start:City {name: 'Boston'})-[:ROUTE*1..2]-(reachable:City)
+RETURN DISTINCT reachable.name AS reachable_cities;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

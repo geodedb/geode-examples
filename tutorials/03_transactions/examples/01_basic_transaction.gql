@@ -1,0 +1,76 @@
+-- Tutorial 3: Transactions - Basic Transactions
+-- CANARY: REQ=REQ-TXN-BASIC-001; FEATURE="BasicTransactions"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Basic Transaction: Commit
+-- ============================================
+
+-- Begin a transaction
+BEGIN TRANSACTION;
+
+-- Create some data within the transaction
+CREATE (:Account {id: 'acc_001', name: 'Alice', balance: 1000});
+CREATE (:Account {id: 'acc_002', name: 'Bob', balance: 500});
+CREATE (:Account {id: 'acc_003', name: 'Charlie', balance: 750});
+
+-- Commit the transaction - changes are now permanent
+COMMIT;
+
+-- Verify data was created
+MATCH (a:Account)
+RETURN a.id, a.name, a.balance
+ORDER BY a.id;
+
+-- ============================================
+-- Basic Transaction: Multiple Operations
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Multiple operations in single transaction
+MATCH (a:Account {id: 'acc_001'})
+SET a.status = 'active';
+
+MATCH (a:Account {id: 'acc_002'})
+SET a.status = 'active';
+
+MATCH (a:Account {id: 'acc_003'})
+SET a.status = 'pending';
+
+-- Create audit log
+CREATE (:AuditLog {
+    action: 'status_update',
+    timestamp: datetime(),
+    affected_count: 3
+});
+
+COMMIT;
+
+-- Verify all changes
+MATCH (a:Account)
+RETURN a.id, a.name, a.status;
+
+-- ============================================
+-- Transaction with Reads
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Read within transaction
+MATCH (a:Account)
+WHERE a.balance > 500
+WITH collect(a.id) AS high_balance_accounts
+
+-- Create summary node
+CREATE (:Summary {
+    type: 'high_balance',
+    accounts: high_balance_accounts,
+    generated_at: datetime()
+});
+
+COMMIT;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

@@ -1,0 +1,120 @@
+-- Tutorial 5: Graph Algorithms - Centrality
+-- CANARY: REQ=REQ-ALGO-CENTRAL-001; FEATURE="CentralityAlgorithms"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Setup: Create Social Network
+-- ============================================
+
+-- Create people
+CREATE (:Person {name: 'Alice'});
+CREATE (:Person {name: 'Bob'});
+CREATE (:Person {name: 'Charlie'});
+CREATE (:Person {name: 'Diana'});
+CREATE (:Person {name: 'Eve'});
+CREATE (:Person {name: 'Frank'});
+CREATE (:Person {name: 'Grace'});
+
+-- Create FOLLOWS relationships (directed)
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'}) CREATE (a)-[:FOLLOWS]->(b);
+MATCH (a:Person {name: 'Alice'}), (c:Person {name: 'Charlie'}) CREATE (a)-[:FOLLOWS]->(c);
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'}) CREATE (b)-[:FOLLOWS]->(c);
+MATCH (b:Person {name: 'Bob'}), (d:Person {name: 'Diana'}) CREATE (b)-[:FOLLOWS]->(d);
+MATCH (c:Person {name: 'Charlie'}), (d:Person {name: 'Diana'}) CREATE (c)-[:FOLLOWS]->(d);
+MATCH (d:Person {name: 'Diana'}), (e:Person {name: 'Eve'}) CREATE (d)-[:FOLLOWS]->(e);
+MATCH (e:Person {name: 'Eve'}), (f:Person {name: 'Frank'}) CREATE (e)-[:FOLLOWS]->(f);
+MATCH (f:Person {name: 'Frank'}), (g:Person {name: 'Grace'}) CREATE (f)-[:FOLLOWS]->(g);
+MATCH (g:Person {name: 'Grace'}), (a:Person {name: 'Alice'}) CREATE (g)-[:FOLLOWS]->(a);
+
+-- Additional connections for richer network
+MATCH (a:Person {name: 'Alice'}), (d:Person {name: 'Diana'}) CREATE (a)-[:FOLLOWS]->(d);
+MATCH (e:Person {name: 'Eve'}), (b:Person {name: 'Bob'}) CREATE (e)-[:FOLLOWS]->(b);
+
+-- ============================================
+-- Degree Centrality (Simple Count)
+-- ============================================
+
+-- In-degree: Who has the most followers?
+MATCH (p:Person)<-[r:FOLLOWS]-()
+RETURN p.name, count(r) AS followers
+ORDER BY followers DESC;
+
+-- Out-degree: Who follows the most people?
+MATCH (p:Person)-[r:FOLLOWS]->()
+RETURN p.name, count(r) AS following
+ORDER BY following DESC;
+
+-- Total degree (both directions)
+MATCH (p:Person)
+OPTIONAL MATCH (p)<-[in:FOLLOWS]-()
+OPTIONAL MATCH (p)-[out:FOLLOWS]->()
+RETURN p.name,
+       count(DISTINCT in) AS in_degree,
+       count(DISTINCT out) AS out_degree,
+       count(DISTINCT in) + count(DISTINCT out) AS total_degree
+ORDER BY total_degree DESC;
+
+-- ============================================
+-- PageRank
+-- ============================================
+
+-- PageRank algorithm (identifies influential nodes)
+CALL gds.pageRank.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'FOLLOWS',
+    dampingFactor: 0.85,
+    maxIterations: 20
+})
+YIELD nodeId, score
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN p.name, round(score, 4) AS pagerank
+ORDER BY pagerank DESC;
+
+-- ============================================
+-- Betweenness Centrality
+-- ============================================
+
+-- Identifies bridge nodes (gatekeepers)
+CALL gds.betweennessCentrality.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'FOLLOWS'
+})
+YIELD nodeId, score
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN p.name, round(score, 2) AS betweenness
+ORDER BY betweenness DESC;
+
+-- ============================================
+-- Closeness Centrality
+-- ============================================
+
+-- Measures how close a node is to all others
+CALL gds.closenessCentrality.stream({
+    nodeLabel: 'Person',
+    relationshipType: 'FOLLOWS'
+})
+YIELD nodeId, score
+MATCH (p:Person) WHERE id(p) = nodeId
+RETURN p.name, round(score, 4) AS closeness
+ORDER BY closeness DESC;
+
+-- ============================================
+-- Combined Analysis
+-- ============================================
+
+-- Get all centrality metrics for comparison
+MATCH (p:Person)
+OPTIONAL MATCH (p)<-[in:FOLLOWS]-()
+OPTIONAL MATCH (p)-[out:FOLLOWS]->()
+WITH p, count(DISTINCT in) AS in_deg, count(DISTINCT out) AS out_deg
+
+RETURN
+    p.name,
+    in_deg AS followers,
+    out_deg AS following,
+    in_deg + out_deg AS total_connections
+ORDER BY total_connections DESC;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

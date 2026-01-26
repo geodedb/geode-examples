@@ -1,0 +1,104 @@
+-- Tutorial 4: Vector Search - Vector Basics
+-- CANARY: REQ=REQ-VECTOR-BASIC-001; FEATURE="VectorBasics"; ASPECT=Tutorial; STATUS=TESTED
+
+-- ============================================
+-- Vector Data Types
+-- ============================================
+
+-- 32-bit float vectors (most common for ML embeddings)
+CREATE (:Document {
+    id: 'doc1',
+    title: 'Introduction to Graph Databases',
+    embedding: vectorf32([0.12, 0.34, -0.56, 0.78, 0.23, -0.45, 0.67, 0.89])
+});
+
+CREATE (:Document {
+    id: 'doc2',
+    title: 'SQL vs NoSQL Databases',
+    embedding: vectorf32([0.45, -0.23, 0.67, 0.12, 0.89, -0.34, 0.56, 0.01])
+});
+
+CREATE (:Document {
+    id: 'doc3',
+    title: 'Machine Learning Fundamentals',
+    embedding: vectorf32([-0.34, 0.78, 0.12, 0.56, -0.67, 0.23, 0.45, -0.89])
+});
+
+CREATE (:Document {
+    id: 'doc4',
+    title: 'Graph Algorithms Explained',
+    embedding: vectorf32([0.15, 0.32, -0.48, 0.71, 0.28, -0.41, 0.63, 0.85])
+});
+
+CREATE (:Document {
+    id: 'doc5',
+    title: 'Deep Learning with Neural Networks',
+    embedding: vectorf32([-0.28, 0.72, 0.18, 0.52, -0.61, 0.27, 0.41, -0.83])
+});
+
+-- ============================================
+-- Basic Vector Operations
+-- ============================================
+
+-- Vector magnitude (length)
+WITH vectorf32([3.0, 4.0]) AS v
+RETURN vectorMagnitude(v) AS magnitude;
+-- Returns 5.0 (Pythagorean theorem)
+
+-- Vector normalization
+WITH vectorf32([3.0, 4.0]) AS v
+RETURN vectorNormalize(v) AS normalized;
+-- Returns [0.6, 0.8]
+
+-- Vector addition
+WITH vectorf32([1.0, 2.0, 3.0]) AS v1,
+     vectorf32([4.0, 5.0, 6.0]) AS v2
+RETURN vectorAdd(v1, v2) AS sum;
+-- Returns [5.0, 7.0, 9.0]
+
+-- ============================================
+-- Similarity Functions
+-- ============================================
+
+-- Cosine similarity (best for normalized embeddings)
+WITH vectorf32([1.0, 0.0]) AS v1,
+     vectorf32([0.707, 0.707]) AS v2
+RETURN cosineSimilarity(v1, v2) AS cosine;
+-- Returns ~0.707 (45 degree angle)
+
+-- Euclidean distance (L2)
+WITH vectorf32([0.0, 0.0]) AS v1,
+     vectorf32([3.0, 4.0]) AS v2
+RETURN euclideanDistance(v1, v2) AS distance;
+-- Returns 5.0
+
+-- Inner product (dot product)
+WITH vectorf32([1.0, 2.0, 3.0]) AS v1,
+     vectorf32([4.0, 5.0, 6.0]) AS v2
+RETURN innerProduct(v1, v2) AS dot_product;
+-- Returns 32.0 (1*4 + 2*5 + 3*6)
+
+-- ============================================
+-- Querying with Vectors
+-- ============================================
+
+-- Find documents similar to doc1
+MATCH (d1:Document {id: 'doc1'}), (d2:Document)
+WHERE d1 <> d2
+RETURN
+    d2.title,
+    cosineSimilarity(d1.embedding, d2.embedding) AS similarity
+ORDER BY similarity DESC
+LIMIT 3;
+
+-- Find documents within distance threshold
+WITH vectorf32([0.12, 0.34, -0.56, 0.78, 0.23, -0.45, 0.67, 0.89]) AS query
+MATCH (d:Document)
+WHERE euclideanDistance(d.embedding, query) < 1.0
+RETURN d.title, euclideanDistance(d.embedding, query) AS distance
+ORDER BY distance;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

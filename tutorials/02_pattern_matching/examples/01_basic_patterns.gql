@@ -1,0 +1,80 @@
+-- Tutorial 2: Pattern Matching - Basic Patterns
+-- CANARY: REQ=REQ-GQL-PATTERN-001; FEATURE="BasicPatterns"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Setup: Create sample data
+CREATE (:Person {name: 'Alice', age: 30, city: 'NYC'});
+CREATE (:Person {name: 'Bob', age: 25, city: 'LA'});
+CREATE (:Person {name: 'Charlie', age: 35, city: 'NYC'});
+CREATE (:Person:Employee {name: 'Diana', age: 28, city: 'Chicago'});
+
+-- Create relationships
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+CREATE (a)-[:KNOWS {since: date('2020-01-15')}]->(b);
+
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'})
+CREATE (b)-[:KNOWS {since: date('2021-06-01')}]->(c);
+
+MATCH (a:Person {name: 'Alice'}), (c:Person {name: 'Charlie'})
+CREATE (a)-[:KNOWS {since: date('2019-03-20')}]->(c);
+
+-- ============================================
+-- Node Patterns
+-- ============================================
+
+-- Match all nodes
+MATCH (n) RETURN count(n) AS total_nodes;
+
+-- Match nodes with label
+MATCH (p:Person) RETURN p.name, p.age;
+
+-- Match nodes with multiple labels
+MATCH (e:Person:Employee) RETURN e.name;
+
+-- Match nodes with properties
+MATCH (p:Person {city: 'NYC'})
+RETURN p.name, p.city;
+
+-- ============================================
+-- Relationship Patterns
+-- ============================================
+
+-- Match any relationship
+MATCH (a)-[r]->(b)
+RETURN a.name, type(r), b.name;
+
+-- Match specific relationship type
+MATCH (a)-[:KNOWS]->(b)
+RETURN a.name AS person, b.name AS knows;
+
+-- Match relationship with properties
+MATCH (a)-[r:KNOWS {since: date('2020-01-15')}]->(b)
+RETURN a.name, b.name, r.since;
+
+-- Match undirected relationship
+MATCH (a)-[:KNOWS]-(b)
+WHERE a.name = 'Bob'
+RETURN DISTINCT b.name AS connected_to_bob;
+
+-- ============================================
+-- Pattern Filtering
+-- ============================================
+
+-- Filter on node properties in pattern
+MATCH (a:Person)-[:KNOWS]->(b:Person)
+WHERE a.age > b.age
+RETURN a.name AS older, b.name AS younger;
+
+-- Filter on relationship properties
+MATCH (a)-[r:KNOWS]->(b)
+WHERE r.since > date('2020-01-01')
+RETURN a.name, b.name, r.since;
+
+-- Combined filters
+MATCH (a:Person)-[r:KNOWS]->(b:Person)
+WHERE a.city = 'NYC' AND b.age < 30
+RETURN a.name, b.name;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

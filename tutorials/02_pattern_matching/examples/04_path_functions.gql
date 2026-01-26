@@ -1,0 +1,114 @@
+-- Tutorial 2: Pattern Matching - Path Functions
+-- CANARY: REQ=REQ-GQL-PATHFUNC-001; FEATURE="PathFunctions"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Setup: Create a knowledge graph
+CREATE (:Person {name: 'Alice', age: 30});
+CREATE (:Person {name: 'Bob', age: 25});
+CREATE (:Person {name: 'Charlie', age: 35});
+CREATE (:Person {name: 'Diana', age: 28});
+CREATE (:Person {name: 'Eve', age: 32});
+CREATE (:Person {name: 'Frank', age: 40});
+
+-- Create relationships with weights
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+CREATE (a)-[:KNOWS {weight: 0.9}]->(b);
+
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'})
+CREATE (b)-[:KNOWS {weight: 0.8}]->(c);
+
+MATCH (c:Person {name: 'Charlie'}), (d:Person {name: 'Diana'})
+CREATE (c)-[:KNOWS {weight: 0.7}]->(d);
+
+MATCH (a:Person {name: 'Alice'}), (c:Person {name: 'Charlie'})
+CREATE (a)-[:KNOWS {weight: 0.5}]->(c);
+
+MATCH (d:Person {name: 'Diana'}), (e:Person {name: 'Eve'})
+CREATE (d)-[:KNOWS {weight: 0.9}]->(e);
+
+MATCH (e:Person {name: 'Eve'}), (f:Person {name: 'Frank'})
+CREATE (e)-[:KNOWS {weight: 0.6}]->(f);
+
+-- ============================================
+-- nodes() and relationships()
+-- ============================================
+
+-- Get all nodes in a path
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*2..4]->(b:Person)
+RETURN
+    [n IN nodes(path) | n.name] AS path_nodes,
+    length(path) AS hops;
+
+-- Get all relationships in a path
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*]->(b:Person {name: 'Diana'})
+RETURN
+    [r IN relationships(path) | r.weight] AS weights;
+
+-- ============================================
+-- length()
+-- ============================================
+
+-- Filter paths by length
+MATCH path = (a:Person)-[:KNOWS*]->(b:Person)
+WHERE a.name = 'Alice' AND length(path) <= 3
+RETURN b.name, length(path) AS distance
+ORDER BY distance;
+
+-- ============================================
+-- head() and last()
+-- ============================================
+
+-- Get first and last elements
+MATCH path = (a:Person)-[:KNOWS*]->(b:Person)
+WHERE a.name = 'Alice'
+WITH nodes(path) AS ns
+RETURN
+    head(ns).name AS first,
+    last(ns).name AS last;
+
+-- ============================================
+-- Shortest Path
+-- ============================================
+
+-- Find shortest path between two nodes
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Frank'})
+MATCH path = shortestPath((a)-[:KNOWS*]-(b))
+RETURN
+    [n IN nodes(path) | n.name] AS shortest_path,
+    length(path) AS distance;
+
+-- ============================================
+-- Path Predicates
+-- ============================================
+
+-- All nodes in path satisfy condition
+MATCH path = (a:Person)-[:KNOWS*]->(b:Person)
+WHERE a.name = 'Alice'
+  AND all(n IN nodes(path) WHERE n.age >= 25)
+RETURN [n IN nodes(path) | n.name] AS all_over_25;
+
+-- Any node in path satisfies condition
+MATCH path = (a:Person)-[:KNOWS*]->(b:Person)
+WHERE a.name = 'Alice'
+  AND any(n IN nodes(path) WHERE n.age > 35)
+RETURN [n IN nodes(path) | n.name] AS has_over_35;
+
+-- None satisfies condition
+MATCH path = (a:Person)-[:KNOWS*]->(b:Person)
+WHERE a.name = 'Alice'
+  AND none(n IN nodes(path) WHERE n.age < 20)
+RETURN [n IN nodes(path) | n.name] AS none_under_20;
+
+-- ============================================
+-- Path Weights
+-- ============================================
+
+-- Calculate total weight of path
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*]->(b:Person {name: 'Diana'})
+RETURN
+    [n IN nodes(path) | n.name] AS path,
+    reduce(total = 0.0, r IN relationships(path) | total + r.weight) AS total_weight;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;

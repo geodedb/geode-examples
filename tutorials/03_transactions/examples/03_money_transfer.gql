@@ -1,0 +1,149 @@
+-- Tutorial 3: Transactions - Atomic Money Transfer
+-- CANARY: REQ=REQ-TXN-ATOMIC-001; FEATURE="AtomicTransfer"; ASPECT=Tutorial; STATUS=TESTED
+
+-- This example demonstrates why ACID transactions are essential
+-- for financial operations.
+
+-- ============================================
+-- Setup: Create accounts
+-- ============================================
+
+CREATE (:Account {id: 'alice', name: 'Alice', balance: 1000.00});
+CREATE (:Account {id: 'bob', name: 'Bob', balance: 200.00});
+CREATE (:Account {id: 'charlie', name: 'Charlie', balance: 500.00});
+
+-- Verify initial state
+MATCH (a:Account)
+RETURN a.id, a.name, a.balance
+ORDER BY a.id;
+
+-- ============================================
+-- Atomic Transfer: Alice -> Bob ($300)
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Check source has sufficient funds
+MATCH (source:Account {id: 'alice'})
+WHERE source.balance >= 300
+-- Debit source account
+SET source.balance = source.balance - 300;
+
+-- Credit destination account
+MATCH (dest:Account {id: 'bob'})
+SET dest.balance = dest.balance + 300;
+
+-- Create transfer record
+CREATE (:Transfer {
+    id: randomUUID(),
+    from_account: 'alice',
+    to_account: 'bob',
+    amount: 300.00,
+    timestamp: datetime(),
+    status: 'completed'
+});
+
+COMMIT;
+
+-- Verify: Total money in system unchanged (1700)
+MATCH (a:Account)
+RETURN sum(a.balance) AS total_balance;
+-- Should still be 1700
+
+-- Check individual balances
+MATCH (a:Account)
+RETURN a.id, a.balance
+ORDER BY a.id;
+-- Alice: 700, Bob: 500, Charlie: 500
+
+-- ============================================
+-- Failed Transfer: Insufficient Funds
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Try to transfer more than available
+MATCH (source:Account {id: 'alice'})
+WHERE source.balance >= 1000  -- Alice only has 700 now
+SET source.balance = source.balance - 1000;
+
+-- This MATCH will fail (no rows matched), so nothing happens
+-- The transaction can be committed but no changes were made
+
+COMMIT;
+
+-- Verify: Alice's balance unchanged
+MATCH (a:Account {id: 'alice'})
+RETURN a.balance;  -- Still 700
+
+-- ============================================
+-- Transfer with Validation
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Better approach: Use conditional logic
+MATCH (source:Account {id: 'bob'})
+WITH source,
+     CASE WHEN source.balance >= 100 THEN true ELSE false END AS can_transfer
+
+WHERE can_transfer = true
+
+-- Only executes if we had sufficient funds
+SET source.balance = source.balance - 100;
+
+WITH source
+MATCH (dest:Account {id: 'charlie'})
+SET dest.balance = dest.balance + 100;
+
+CREATE (:Transfer {
+    from_account: 'bob',
+    to_account: 'charlie',
+    amount: 100.00,
+    timestamp: datetime()
+});
+
+COMMIT;
+
+-- Final state
+MATCH (a:Account)
+RETURN a.id, a.balance
+ORDER BY a.id;
+-- Alice: 700, Bob: 400, Charlie: 600
+
+-- ============================================
+-- Multi-party Transfer with Savepoints
+-- ============================================
+
+BEGIN TRANSACTION;
+
+-- Alice pays Bob
+MATCH (a:Account {id: 'alice'}) SET a.balance = a.balance - 50;
+MATCH (b:Account {id: 'bob'}) SET b.balance = b.balance + 50;
+SAVEPOINT alice_to_bob;
+
+-- Bob pays Charlie
+MATCH (b:Account {id: 'bob'}) SET b.balance = b.balance - 100;
+MATCH (c:Account {id: 'charlie'}) SET c.balance = c.balance + 100;
+SAVEPOINT bob_to_charlie;
+
+-- Charlie pays Alice (completing the cycle)
+MATCH (c:Account {id: 'charlie'}) SET c.balance = c.balance - 75;
+MATCH (a:Account {id: 'alice'}) SET a.balance = a.balance + 75;
+
+COMMIT;
+
+-- Final balances
+MATCH (a:Account)
+RETURN a.id, a.balance
+ORDER BY a.id;
+
+-- Show transfer history
+MATCH (t:Transfer)
+RETURN t.from_account, t.to_account, t.amount, t.timestamp
+ORDER BY t.timestamp;
+
+-- ============================================
+-- Cleanup
+-- ============================================
+MATCH (n) DETACH DELETE n;
