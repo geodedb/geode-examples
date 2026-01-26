@@ -81,7 +81,16 @@ geode-examples/
 │   ├── go/                 # Go examples
 │   ├── python/             # Python examples
 │   ├── rust/               # Rust examples
-│   └── zig/                # Zig examples
+│   ├── zig/                # Zig examples
+│   └── nodejs/             # Node.js examples
+│
+├── tutorials/              # Step-by-step tutorials
+│   ├── 01_getting_started/
+│   ├── 02_pattern_matching/
+│   ├── 03_transactions/
+│   ├── 04_vector_search/
+│   ├── 05_graph_algorithms/
+│   └── 06_production_deployment/
 │
 ├── docker/                 # Docker configurations
 ├── helm/                   # Kubernetes Helm charts
@@ -257,6 +266,18 @@ Contributions are welcome!
 - [Full Plan](docs/PLAN.md) - Complete implementation plan
 - [Claims Registry](docs/CLAIMS_REGISTRY.md) - All tracked claims
 - [CANARY Cross-Reference](docs/CANARY_CROSSREF.md) - Code traceability
+- [Verification Report](docs/VERIFICATION_REPORT.md) - Current verification status
+
+## Tutorials
+
+Step-by-step guides for learning Geode:
+
+1. [Getting Started](tutorials/01_getting_started/) - Basic nodes, relationships, queries
+2. [Pattern Matching](tutorials/02_pattern_matching/) - Advanced patterns and paths
+3. [Transactions](tutorials/03_transactions/) - ACID, savepoints, isolation
+4. [Vector Search](tutorials/04_vector_search/) - HNSW indexes, semantic search
+5. [Graph Algorithms](tutorials/05_graph_algorithms/) - 20+ built-in algorithms
+6. [Production Deployment](tutorials/06_production_deployment/) - Docker, K8s, HA
 
 ## Links
 
