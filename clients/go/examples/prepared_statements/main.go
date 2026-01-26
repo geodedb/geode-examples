@@ -174,7 +174,7 @@ func main() {
 		return
 	}
 
-	fmt.Println("=== Prepared Statements Example ===\n")
+	fmt.Println("=== Prepared Statements Example ===")
 
 	// Create test data
 	fmt.Println("Creating test data...")

@@ -173,7 +173,7 @@ func main() {
 		return
 	}
 
-	fmt.Println("\n=== Connection Pooling Example ===\n")
+	fmt.Println("\n=== Connection Pooling Example ===")
 
 	// Show initial pool stats
 	fmt.Println("Initial Pool Stats:")

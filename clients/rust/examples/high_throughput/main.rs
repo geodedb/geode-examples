@@ -73,18 +73,18 @@ async fn main() -> Result<()> {
     println!("\nResults:");
     println!("  Concurrency:      500 workers");
     println!("  Duration:         {:.2}s", result.duration.as_secs_f64());
-    println!("  Total Queries:    {:,}", result.total_queries);
-    println!("  Successful:       {:,}", result.successful);
-    println!("  Failed:           {:,}", result.failed);
-    println!("  Throughput:       {:,.0} queries/sec", result.queries_per_second);
+    println!("  Total Queries:    {}", result.total_queries);
+    println!("  Successful:       {}", result.successful);
+    println!("  Failed:           {}", result.failed);
+    println!("  Throughput:       {:.0} queries/sec", result.queries_per_second);
 
     // Verify claim
     let claimed_min_qps = 10_000.0;
     if result.queries_per_second >= claimed_min_qps {
-        println!("\n  ✓ VERIFIED: Throughput {:,.0} >= {:,.0} qps",
+        println!("\n  ✓ VERIFIED: Throughput {:.0} >= {:.0} qps",
                  result.queries_per_second, claimed_min_qps);
     } else {
-        println!("\n  Note: Throughput {:,.0} < {:,.0} qps",
+        println!("\n  Note: Throughput {:.0} < {:.0} qps",
                  result.queries_per_second, claimed_min_qps);
         println!("        (May be limited by test environment simulation)");
     }

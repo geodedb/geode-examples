@@ -171,10 +171,10 @@ async fn main() -> Result<()> {
 
     println!("\n=== Results ===");
     println!("Duration:         {:.2}s", actual_duration.as_secs_f64());
-    println!("Total queries:    {:,}", total);
-    println!("Successful:       {:,}", success_count);
-    println!("Failed:           {:,}", fail_count);
-    println!("Throughput:       {:,.0} queries/sec",
+    println!("Total queries:    {}", total);
+    println!("Successful:       {}", success_count);
+    println!("Failed:           {}", fail_count);
+    println!("Throughput:       {:.0} queries/sec",
              success_count as f64 / actual_duration.as_secs_f64());
 
     // Final stats
@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
     println!("Burst completed:");
     println!("  Duration:    {:?}", burst_duration);
     println!("  Successful:  {}", burst_success);
-    println!("  Throughput:  {:,.0} queries/sec",
+    println!("  Throughput:  {:.0} queries/sec",
              burst_success as f64 / burst_duration.as_secs_f64());
 
     println!("\nRust connection pool example completed!");

@@ -34,4 +34,9 @@ pub fn build(b: *std.Build) void {
     const run_txn = b.addRunArtifact(txn_exe);
     const run_txn_step = b.step("run-txn", "Run transaction example");
     run_txn_step.dependOn(&run_txn.step);
+
+    // Test step - verifies examples compile successfully
+    const test_step = b.step("test", "Build and verify all examples");
+    test_step.dependOn(&basic_exe.step);
+    test_step.dependOn(&txn_exe.step);
 }
