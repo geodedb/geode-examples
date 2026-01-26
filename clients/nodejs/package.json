@@ -1,0 +1,29 @@
+{
+  "name": "geode-nodejs-examples",
+  "version": "1.0.0",
+  "description": "Node.js client examples for Geode graph database",
+  "type": "module",
+  "scripts": {
+    "basic": "node examples/basic_connection/index.js",
+    "async": "node examples/async_queries/index.js",
+    "transactions": "node examples/transactions/index.js",
+    "streaming": "node examples/streaming/index.js",
+    "all": "npm run basic && npm run async && npm run transactions && npm run streaming"
+  },
+  "keywords": [
+    "geode",
+    "graph-database",
+    "gql",
+    "nodejs"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "geode-client": "^1.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0"
+  }
+}
