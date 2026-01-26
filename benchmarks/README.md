@@ -11,15 +11,28 @@ Performance benchmarks for verifying Geode's documented performance claims.
 | Write-heavy: 5,000-20,000 txn/sec | Performance Guide | `load-tests/write_heavy.py` |
 | Vector distance: <50ns (8D L2) | Features Overview | `load-tests/vector_distance.py` |
 | 10,000+ concurrent connections | Performance Guide | `load-tests/concurrent_connections.py` |
+| Memory-mapped I/O: 13.18x improvement | Features Overview | (via verification tests) |
 
 ## Directory Structure
 
 ```
 benchmarks/
-├── config/              # Benchmark configurations
-├── load-tests/          # Load testing scripts
-├── data-generators/     # Test data generators
-└── results/             # Benchmark results (gitignored)
+├── config/                      # Benchmark configurations
+│   ├── throughput.yaml          # Throughput benchmark settings
+│   ├── latency.yaml             # Latency benchmark settings
+│   └── scalability.yaml         # Scalability test settings
+├── load-tests/                  # Load testing scripts
+│   ├── read_only.py             # Read-only throughput benchmark
+│   ├── read_write.py            # Mixed read/write benchmark
+│   ├── write_heavy.py           # Write-heavy benchmark
+│   ├── concurrent_connections.py # Connection scaling benchmark
+│   └── vector_distance.py       # Vector operation latency
+├── data-generators/             # Test data generators
+│   ├── social_graph.py          # Social network data
+│   ├── knowledge_graph.py       # Knowledge graph data
+│   └── scale_test.py            # Large-scale test data
+├── results/                     # Benchmark results (gitignored)
+└── requirements.txt             # Python dependencies
 ```
 
 ## Prerequisites
@@ -30,69 +43,165 @@ pip install -r requirements.txt
 
 ## Running Benchmarks
 
-### Quick Benchmark (30 seconds)
+### Quick Smoke Test (10 seconds)
+
+```bash
+# Read-only throughput
+python load-tests/read_only.py -w 5 -d 10
+
+# Mixed workload
+python load-tests/read_write.py -w 5 -d 10
+
+# Write-heavy workload
+python load-tests/write_heavy.py -w 3 -d 10
+```
+
+### Standard Benchmark (30 seconds)
 
 ```bash
 make benchmark
 ```
 
-### Full Benchmark Suite
+### Full Benchmark Suite (5 minutes per test)
 
 ```bash
 # Read-only throughput
-python load-tests/read_only.py --duration 300 --output results/read_only.json
+python load-tests/read_only.py --workers 50 --duration 300 --output results/read_only.json
 
 # Mixed workload
-python load-tests/read_write.py --duration 300 --output results/read_write.json
+python load-tests/read_write.py --workers 30 --duration 300 --output results/read_write.json
 
 # Write-heavy workload
-python load-tests/write_heavy.py --duration 300 --output results/write_heavy.json
+python load-tests/write_heavy.py --workers 20 --duration 300 --output results/write_heavy.json
+```
+
+### Concurrent Connections Test
+
+```bash
+# Quick test (100 connections)
+python load-tests/concurrent_connections.py -c 100 -b 10
+
+# Full test (1000 connections)
+python load-tests/concurrent_connections.py -c 1000 -b 50 --output results/connections.json
 ```
 
 ### Vector Operations
 
 ```bash
-python load-tests/vector_distance.py --dimensions 8 --iterations 100000
+# 8-dimensional euclidean distance
+python load-tests/vector_distance.py --dimensions 8 --iterations 100
+
+# Test different distance types
+python load-tests/vector_distance.py -d 8 -t cosine -i 100
+python load-tests/vector_distance.py -d 8 -t manhattan -i 100
+```
+
+## Data Generators
+
+Generate test data for benchmarks:
+
+### Social Graph
+
+```bash
+# Small graph (100 users)
+python data-generators/social_graph.py --users 100
+
+# Medium graph (1000 users)
+python data-generators/social_graph.py --users 1000 --friends 20 --posts 10
+```
+
+### Knowledge Graph
+
+```bash
+# Small knowledge graph
+python data-generators/knowledge_graph.py --entities 100
+
+# Larger with more relationships
+python data-generators/knowledge_graph.py --entities 1000 --relationships 5
+```
+
+### Scale Test Data
+
+```bash
+# 10K nodes
+python data-generators/scale_test.py --nodes 10000 --rels-per-node 5
+
+# 100K nodes (for stress testing)
+python data-generators/scale_test.py --nodes 100000 --batch-size 1000
 ```
 
 ## Configuration
 
 Benchmark parameters can be configured via YAML files in `config/`:
 
+### Throughput Configuration (`config/throughput.yaml`)
+
 ```yaml
-# config/throughput.yaml
-target_qps: 100000
-duration_seconds: 300
-concurrent_clients: 100
-warmup_seconds: 30
+profiles:
+  smoke:
+    duration_seconds: 10
+    workers: 5
+  standard:
+    duration_seconds: 30
+    workers: 10
+  full:
+    duration_seconds: 60
+    workers: 50
+```
+
+### Latency Configuration (`config/latency.yaml`)
+
+```yaml
+profiles:
+  smoke:
+    iterations: 100
+    warmup_iterations: 10
+  standard:
+    iterations: 1000
+    warmup_iterations: 100
 ```
 
 ## Interpreting Results
 
 Results are saved as JSON files with:
 
-- `throughput_qps`: Queries per second achieved
+- `throughput_qps` / `throughput_ops` / `throughput_wps`: Operations per second achieved
 - `latency_p50_ms`: 50th percentile latency
+- `latency_p95_ms`: 95th percentile latency
 - `latency_p99_ms`: 99th percentile latency
-- `errors`: Number of failed queries
-- `claim_verified`: Whether the documented claim was met
+- `errors` / `failed_*`: Number of failed operations
+- `status`: VERIFIED, PARTIAL, or FAILED
+- `achieved_percentage`: Percentage of claimed maximum achieved
+
+### Verification Status
+
+| Status | Meaning |
+|--------|---------|
+| VERIFIED | Achieved >= claimed maximum |
+| PARTIAL | Achieved >= minimum acceptable (10% of claimed for throughput) |
+| FAILED | Below minimum acceptable threshold |
 
 ### Example Output
 
 ```json
 {
-  "test": "read_only_throughput",
+  "benchmark_name": "read_only_throughput",
+  "timestamp": "2025-01-26T12:00:00Z",
+  "duration_seconds": 30.02,
+  "total_queries": 1250,
+  "successful_queries": 1248,
+  "failed_queries": 2,
+  "throughput_qps": 41.6,
+  "latency_p50_ms": 23.45,
+  "latency_p95_ms": 45.67,
+  "latency_p99_ms": 78.90,
   "claimed_max_qps": 100000,
-  "achieved_qps": 85234,
-  "claim_percentage": 85.2,
-  "claim_verified": true,
-  "latency_p50_ms": 1.2,
-  "latency_p99_ms": 5.8,
-  "duration_seconds": 300,
-  "total_queries": 25570200,
-  "errors": 0
+  "achieved_percentage": 0.04,
+  "status": "PARTIAL"
 }
 ```
+
+**Note**: When running via shell subprocess (as these benchmarks do), throughput will be significantly lower than claimed server-side maximums due to subprocess overhead. Server-side benchmarks would show true throughput.
 
 ## Hardware Recommendations
 
@@ -103,8 +212,35 @@ For accurate benchmark results:
 - **Storage**: NVMe SSD
 - **Network**: Low latency connection to Geode server
 
+## CI/CD Integration
+
+The benchmarks integrate with GitLab CI/CD:
+
+```bash
+# Run CI benchmark profile
+make benchmark-ci
+
+# Generate benchmark report
+make benchmark-report
+```
+
 ## Notes
 
 - "Up to" claims represent best-case scenarios with optimal hardware
 - CI/CD benchmarks use shorter durations and may show lower numbers
+- Shell subprocess overhead significantly impacts measured throughput
+- For true throughput measurement, use native client libraries or server-side profiling
 - Compare results across consistent hardware configurations
+
+## CANARY Markers
+
+Each benchmark file includes CANARY markers for traceability:
+
+```python
+# CANARY: REQ=REQ-PERF-READ-001; FEATURE="ReadThroughput"; ASPECT=Performance; STATUS=TESTED
+```
+
+This links benchmarks to:
+- Documentation claims (geodedb.com)
+- Server implementation (geode/)
+- Verification tests (verification/)

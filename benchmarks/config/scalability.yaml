@@ -1,0 +1,193 @@
+# Scalability Benchmark Configuration
+# CANARY: REQ=REQ-PERF-SCALE-001; FEATURE="ScalabilityConfig"; ASPECT=Performance; STATUS=TESTED
+#
+# Configures scalability benchmark parameters for verifying scalability claims.
+
+# Global settings
+global:
+  server:
+    host: ${GEODE_HOST:-localhost}
+    port: ${GEODE_PORT:-3141}
+    use_docker: ${USE_DOCKER:-true}
+
+  output:
+    format: json
+    directory: ./results/scalability
+    timestamp_suffix: true
+
+# Scalability benchmark profiles
+profiles:
+  # Quick smoke test
+  smoke:
+    description: "Quick scalability validation"
+    max_nodes: 1000
+    max_connections: 10
+
+  # Standard CI/CD benchmark
+  standard:
+    description: "Standard CI/CD scalability benchmark"
+    max_nodes: 10000
+    max_connections: 100
+
+  # Full benchmark for release validation
+  full:
+    description: "Full scalability benchmark for release"
+    max_nodes: 100000
+    max_connections: 1000
+
+  # Extreme scale test
+  extreme:
+    description: "Extreme scale test"
+    max_nodes: 1000000
+    max_connections: 10000
+
+# Scalability benchmarks
+benchmarks:
+  # Concurrent connections
+  # Claim: 10,000+ concurrent connections
+  concurrent_connections:
+    enabled: true
+    script: load-tests/concurrent_connections.py
+    claim:
+      source: "Overview, Scalability"
+      canary: "REQ-PERF-CONN-001"
+      min_connections: 10000
+    profiles:
+      smoke:
+        target: 10
+        batch_size: 2
+        queries_per_conn: 5
+      standard:
+        target: 100
+        batch_size: 10
+        queries_per_conn: 10
+      full:
+        target: 1000
+        batch_size: 50
+        queries_per_conn: 10
+      extreme:
+        target: 10000
+        batch_size: 100
+        queries_per_conn: 5
+
+  # Data volume scaling
+  # Claim: 100M+ nodes
+  data_volume:
+    enabled: true
+    script: data-generators/scale_test.py
+    claim:
+      source: "Overview, Scalability"
+      canary: "REQ-SCALE-DATA-001"
+      max_nodes: 100000000  # 100M nodes
+    profiles:
+      smoke:
+        nodes: 1000
+        rels_per_node: 5
+      standard:
+        nodes: 10000
+        rels_per_node: 5
+      full:
+        nodes: 100000
+        rels_per_node: 5
+      extreme:
+        nodes: 1000000
+        rels_per_node: 5
+
+  # Query complexity scaling
+  query_complexity:
+    enabled: true
+    claim:
+      source: "Performance"
+      canary: "REQ-SCALE-QUERY-001"
+    query_sizes:
+      - path_length: 1
+        expected_slowdown: 1.0
+      - path_length: 2
+        expected_slowdown: 2.0
+      - path_length: 3
+        expected_slowdown: 4.0
+      - path_length: 4
+        expected_slowdown: 8.0
+      - path_length: 5
+        expected_slowdown: 16.0
+
+  # Shard scaling (for distributed deployments)
+  shard_scaling:
+    enabled: false  # Requires multi-node setup
+    claim:
+      source: "Distributed Architecture"
+      canary: "REQ-SCALE-SHARD-001"
+    shard_counts:
+      - 1
+      - 2
+      - 4
+      - 8
+    expected_linear_scaling: 0.8  # 80% efficiency
+
+# Data generators
+data_generators:
+  social_graph:
+    script: data-generators/social_graph.py
+    description: "Social network graph"
+    default_params:
+      users: 1000
+      friends_per_user: 10
+      follows_per_user: 20
+      posts_per_user: 5
+
+  knowledge_graph:
+    script: data-generators/knowledge_graph.py
+    description: "Knowledge graph"
+    default_params:
+      entities: 1000
+      relationships_per_entity: 3
+
+  scale_test:
+    script: data-generators/scale_test.py
+    description: "Generic scale test data"
+    default_params:
+      nodes: 10000
+      rels_per_node: 5
+      batch_size: 1000
+
+# Scaling metrics to track
+metrics:
+  # Memory usage per node
+  memory_per_node_kb: 1  # Expected ~1KB per node
+
+  # Query time scaling
+  query_time_scaling:
+    linear: 1.0
+    logarithmic: 0.5
+    constant: 0.0
+
+  # Throughput degradation
+  throughput_degradation:
+    acceptable: 0.1  # 10% degradation acceptable
+    warning: 0.25    # 25% degradation is warning
+    failure: 0.5     # 50% degradation is failure
+
+# Verification thresholds
+verification:
+  # Connection scaling
+  connections:
+    verified: 10000
+    partial: 1000
+    failed: 100
+
+  # Data volume
+  data_volume:
+    verified: 100000000  # 100M
+    partial: 1000000     # 1M
+    failed: 100000       # 100K
+
+# Report settings
+reporting:
+  include_charts: true
+  chart_types:
+    - throughput_vs_connections
+    - latency_vs_data_size
+    - memory_vs_nodes
+
+  compare_with_baseline: true
+  baseline_file: ./results/baseline.json

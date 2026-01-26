@@ -1,0 +1,149 @@
+# Latency Benchmark Configuration
+# CANARY: REQ=REQ-PERF-LATENCY-001; FEATURE="LatencyConfig"; ASPECT=Performance; STATUS=TESTED
+#
+# Configures latency benchmark parameters for verifying performance claims.
+
+# Global settings
+global:
+  server:
+    host: ${GEODE_HOST:-localhost}
+    port: ${GEODE_PORT:-3141}
+    use_docker: ${USE_DOCKER:-true}
+
+  output:
+    format: json
+    directory: ./results/latency
+    timestamp_suffix: true
+
+# Latency benchmark profiles
+profiles:
+  # Quick smoke test
+  smoke:
+    iterations: 100
+    warmup_iterations: 10
+
+  # Standard CI/CD benchmark
+  standard:
+    iterations: 1000
+    warmup_iterations: 100
+
+  # Full benchmark for release validation
+  full:
+    iterations: 10000
+    warmup_iterations: 1000
+
+# Latency benchmarks
+benchmarks:
+  # Vector distance calculation latency
+  # Claim: <50ns for 8D L2 distance (server-side)
+  vector_distance:
+    enabled: true
+    script: load-tests/vector_distance.py
+    claim:
+      source: "Features Overview, Performance"
+      canary: "REQ-PERF-VECTOR-001"
+      max_latency_ns: 50
+      note: "Claimed latency is server-side only; client measurements include overhead"
+    dimensions:
+      - 8    # Primary claim dimension
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+      - 512
+      - 1024
+    distance_types:
+      - euclidean  # Primary claim type (L2)
+      - cosine
+      - manhattan
+      - dot_product
+    profiles:
+      smoke:
+        iterations: 50
+        warmup: 5
+      standard:
+        iterations: 100
+        warmup: 10
+      full:
+        iterations: 1000
+        warmup: 100
+
+  # Query parsing latency
+  query_parsing:
+    enabled: true
+    claim:
+      source: "Performance"
+      canary: "REQ-PERF-PARSE-001"
+    query_complexities:
+      simple:
+        query: "RETURN 1"
+        expected_max_ms: 1
+      moderate:
+        query: "MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a, b"
+        expected_max_ms: 5
+      complex:
+        query: |
+          MATCH (a:Person)-[:KNOWS*1..3]-(b:Person)
+          WHERE a.age > 25 AND b.city = 'NYC'
+          WITH a, b, count(*) AS cnt
+          ORDER BY cnt DESC
+          LIMIT 10
+          RETURN a.name, b.name, cnt
+        expected_max_ms: 10
+
+  # Index lookup latency
+  index_lookup:
+    enabled: true
+    claim:
+      source: "Performance, Features"
+      canary: "REQ-PERF-INDEX-001"
+    index_types:
+      btree:
+        setup: "CREATE INDEX test_btree ON TestNode(value) USING btree"
+        query: "MATCH (n:TestNode) WHERE n.value > 500 AND n.value < 600 RETURN n"
+        expected_max_ms: 5
+      hash:
+        setup: "CREATE INDEX test_hash ON TestNode(id) USING hash"
+        query: "MATCH (n:TestNode {id: 'test_123'}) RETURN n"
+        expected_max_ms: 2
+      fulltext:
+        setup: "CREATE INDEX test_fulltext ON TestNode(text) USING fulltext"
+        query: "MATCH (n:TestNode) WHERE n.text CONTAINS 'search term' RETURN n"
+        expected_max_ms: 10
+
+# Percentile targets
+percentile_targets:
+  p50_max_ms: 5
+  p95_max_ms: 20
+  p99_max_ms: 50
+
+# Verification thresholds
+verification:
+  # VERIFIED: all percentiles within targets
+  # PARTIAL: p50 within target
+  # FAILED: p50 exceeds target
+
+  pass_criteria:
+    - p50_within_target
+    - p95_within_2x_target
+    - p99_within_5x_target
+
+# Report settings
+reporting:
+  histogram_buckets:
+    - 0.1
+    - 0.5
+    - 1
+    - 2
+    - 5
+    - 10
+    - 20
+    - 50
+    - 100
+    - 200
+    - 500
+    - 1000
+
+  include_outliers: true
+  outlier_percentile: 99.9

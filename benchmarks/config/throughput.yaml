@@ -1,0 +1,163 @@
+# Throughput Benchmark Configuration
+# CANARY: REQ=REQ-PERF-THROUGHPUT-001; FEATURE="ThroughputConfig"; ASPECT=Performance; STATUS=TESTED
+#
+# Configures throughput benchmark parameters for verifying performance claims.
+
+# Global settings
+global:
+  # Geode server connection
+  server:
+    host: ${GEODE_HOST:-localhost}
+    port: ${GEODE_PORT:-3141}
+    use_docker: ${USE_DOCKER:-true}
+    docker_service: geode
+
+  # Output settings
+  output:
+    format: json
+    directory: ./results/throughput
+    timestamp_suffix: true
+
+  # Retry settings
+  retry:
+    max_attempts: 3
+    delay_ms: 1000
+
+# Benchmark profiles
+profiles:
+  # Quick smoke test
+  smoke:
+    description: "Quick throughput validation"
+    duration_seconds: 10
+    workers: 5
+    warmup_seconds: 2
+
+  # Standard CI/CD benchmark
+  standard:
+    description: "Standard CI/CD throughput benchmark"
+    duration_seconds: 30
+    workers: 10
+    warmup_seconds: 5
+
+  # Full benchmark for release validation
+  full:
+    description: "Full throughput benchmark for release"
+    duration_seconds: 60
+    workers: 50
+    warmup_seconds: 10
+
+  # Maximum stress test
+  stress:
+    description: "Stress test for maximum throughput"
+    duration_seconds: 120
+    workers: 100
+    warmup_seconds: 15
+
+# Benchmark types
+benchmarks:
+  # Read-only throughput
+  # Claim: up to 100,000 txn/sec
+  read_only:
+    enabled: true
+    script: load-tests/read_only.py
+    claim:
+      source: "Overview, Performance"
+      canary: "REQ-PERF-READ-001"
+      max_claimed: 100000
+      min_acceptable: 10000  # 10% of claimed max
+    profiles:
+      smoke:
+        workers: 5
+        duration: 10
+      standard:
+        workers: 20
+        duration: 30
+      full:
+        workers: 50
+        duration: 60
+      stress:
+        workers: 100
+        duration: 120
+
+  # Read-write mixed throughput
+  # Claim: 10,000-50,000 txn/sec
+  read_write:
+    enabled: true
+    script: load-tests/read_write.py
+    claim:
+      source: "Overview, Performance"
+      canary: "REQ-PERF-READWRITE-001"
+      min_claimed: 10000
+      max_claimed: 50000
+    options:
+      read_ratio: 0.7  # 70% reads, 30% writes
+    profiles:
+      smoke:
+        workers: 5
+        duration: 10
+      standard:
+        workers: 15
+        duration: 30
+      full:
+        workers: 30
+        duration: 60
+
+  # Write-heavy throughput
+  # Claim: 5,000-20,000 txn/sec
+  write_heavy:
+    enabled: true
+    script: load-tests/write_heavy.py
+    claim:
+      source: "Overview, Performance"
+      canary: "REQ-PERF-WRITE-001"
+      min_claimed: 5000
+      max_claimed: 20000
+    profiles:
+      smoke:
+        workers: 3
+        duration: 10
+      standard:
+        workers: 10
+        duration: 30
+      full:
+        workers: 20
+        duration: 60
+
+# Verification thresholds
+verification:
+  # VERIFIED: achieved >= claimed maximum
+  # PARTIAL: achieved >= min_acceptable
+  # FAILED: achieved < min_acceptable
+
+  # Pass criteria for CI/CD
+  ci_pass_status:
+    - VERIFIED
+    - PARTIAL
+
+  # Required for release
+  release_pass_status:
+    - VERIFIED
+
+# Report settings
+reporting:
+  # Generate detailed report
+  detailed: true
+
+  # Include percentile breakdowns
+  percentiles:
+    - 50
+    - 90
+    - 95
+    - 99
+    - 99.9
+
+  # Include comparison with claims
+  compare_claims: true
+
+  # Generate badge
+  badge:
+    enabled: true
+    thresholds:
+      green: 0.8   # >= 80% of claimed
+      yellow: 0.5  # >= 50% of claimed
+      red: 0.0     # < 50% of claimed
