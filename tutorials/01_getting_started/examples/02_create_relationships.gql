@@ -1,0 +1,27 @@
+-- Tutorial 1: Getting Started - Create Relationships
+-- CANARY: REQ=REQ-TUTORIAL-001-RELS; FEATURE="RelationshipCreation"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Create KNOWS relationships
+MATCH (a:Person {name: 'Alice'}), (b:Person {name: 'Bob'})
+CREATE (a)-[:KNOWS {since: date('2020-01-15')}]->(b);
+
+MATCH (b:Person {name: 'Bob'}), (c:Person {name: 'Charlie'})
+CREATE (b)-[:KNOWS {since: date('2019-06-20')}]->(c);
+
+MATCH (c:Person {name: 'Charlie'}), (d:Person {name: 'Diana'})
+CREATE (c)-[:KNOWS {since: date('2021-03-10')}]->(d);
+
+-- Create WORKS_AT relationships
+MATCH (a:Person {name: 'Alice'}), (t:Company {name: 'TechCorp'})
+CREATE (a)-[:WORKS_AT {role: 'Engineer', since: date('2018-01-01')}]->(t);
+
+MATCH (b:Person {name: 'Bob'}), (t:Company {name: 'TechCorp'})
+CREATE (b)-[:WORKS_AT {role: 'Manager', since: date('2017-05-15')}]->(t);
+
+MATCH (c:Person {name: 'Charlie'}), (d:Company {name: 'DataInc'})
+CREATE (c)-[:WORKS_AT {role: 'Director', since: date('2016-08-01')}]->(d);
+
+-- Verify relationships
+MATCH (a)-[r]->(b)
+RETURN a.name, type(r), b.name
+ORDER BY a.name;

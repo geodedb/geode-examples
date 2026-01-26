@@ -1,0 +1,17 @@
+-- Tutorial 1: Getting Started - Create Nodes
+-- CANARY: REQ=REQ-TUTORIAL-001-NODES; FEATURE="NodeCreation"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Create person nodes with properties
+CREATE (:Person {name: 'Alice', age: 30, city: 'New York'});
+CREATE (:Person {name: 'Bob', age: 25, city: 'San Francisco'});
+CREATE (:Person {name: 'Charlie', age: 35, city: 'New York'});
+CREATE (:Person {name: 'Diana', age: 28, city: 'Los Angeles'});
+
+-- Create company nodes
+CREATE (:Company {name: 'TechCorp', founded: 2010, industry: 'Technology'});
+CREATE (:Company {name: 'DataInc', founded: 2015, industry: 'Data Analytics'});
+
+-- Verify nodes were created
+MATCH (n)
+RETURN labels(n) AS type, count(n) AS count
+GROUP BY labels(n);

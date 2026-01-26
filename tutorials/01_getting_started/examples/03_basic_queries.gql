@@ -1,0 +1,38 @@
+-- Tutorial 1: Getting Started - Basic Queries
+-- CANARY: REQ=REQ-TUTORIAL-001-QUERIES; FEATURE="BasicQueries"; ASPECT=Tutorial; STATUS=TESTED
+
+-- Query all people
+MATCH (p:Person)
+RETURN p.name, p.age, p.city
+ORDER BY p.age;
+
+-- Query people in a specific city
+MATCH (p:Person {city: 'New York'})
+RETURN p.name, p.age;
+
+-- Query people with age filter
+MATCH (p:Person)
+WHERE p.age > 28
+RETURN p.name, p.age;
+
+-- Query relationships
+MATCH (a:Person)-[:KNOWS]->(b:Person)
+RETURN a.name AS person, b.name AS knows;
+
+-- Query with path patterns
+MATCH path = (a:Person {name: 'Alice'})-[:KNOWS*1..3]->(b:Person)
+RETURN b.name, length(path) AS hops;
+
+-- Aggregation query
+MATCH (p:Person)
+RETURN
+  count(p) AS total_people,
+  avg(p.age) AS average_age,
+  min(p.age) AS youngest,
+  max(p.age) AS oldest;
+
+-- Group by query
+MATCH (p:Person)
+RETURN p.city, count(p) AS population
+GROUP BY p.city
+ORDER BY population DESC;
