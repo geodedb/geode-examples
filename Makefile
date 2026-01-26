@@ -132,6 +132,12 @@ verify-claims: ## Verify all documented claims
 	@echo "Verifying documented claims..."
 	@./scripts/run_all_tests.sh
 
+verify-verbose: ## Verify with verbose output
+	@./scripts/run_all_tests.sh --verbose
+
+verify-quick: ## Quick verification (skip performance tests)
+	@./scripts/run_all_tests.sh --quick
+
 verify-canary: ## Cross-reference with CANARY markers
 	@echo "Cross-referencing CANARY markers..."
 	@./scripts/compare_canary.sh
