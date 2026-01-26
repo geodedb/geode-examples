@@ -33,3 +33,6 @@ jsonschema>=4.21.0
 
 # Statistics
 scipy>=1.12.0
+
+# System information
+psutil>=5.9.0

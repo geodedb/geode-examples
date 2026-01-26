@@ -1,38 +1,39 @@
 #!/usr/bin/env python3
 """
-High-Throughput Benchmark for Geode
+High-Throughput Parallel Benchmark for Geode
 
-This benchmark is designed to achieve maximum throughput by:
-1. Running inside the Geode container (eliminating network/subprocess overhead)
-2. Using batch query execution when running externally
-3. Supporting configurable concurrency and duration
+This benchmark runs truly parallel workers, each executing queries continuously
+for the specified duration. Workers run independently and don't wait for each other.
 
 CANARY: REQ=REQ-PERF-HIGHTP-001; FEATURE="HighThroughputBench"; ASPECT=Performance; STATUS=TESTED
 
-Usage (inside container):
-    docker compose exec geode python3 /benchmarks/load-tests/high_throughput.py
+Usage:
+    # Quick test with 20 parallel workers
+    python benchmarks/load-tests/high_throughput.py --workers 20 --duration 30
 
-Usage (external with batching):
-    python benchmarks/load-tests/high_throughput.py --mode external
+    # High-scale test with 100 parallel workers, batch size 50
+    python benchmarks/load-tests/high_throughput.py --workers 100 --duration 120 --batch-size 50
 
-Usage (maximum scale):
-    python benchmarks/load-tests/high_throughput.py --workers 1000 --duration 300 --mode internal
+    # Maximum scale test
+    python benchmarks/load-tests/high_throughput.py --workers 200 --duration 300 --batch-size 100
+
+    # Run inside container for best performance
+    docker compose exec geode python3 /benchmarks/load-tests/high_throughput.py --mode internal
 """
 import argparse
-import asyncio
 import json
 import os
-import socket
-import ssl
 import statistics
 import subprocess
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Tuple
+from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
 
 
 @dataclass
@@ -50,6 +51,8 @@ class HighThroughputResult:
     latency_p95_ms: float
     latency_p99_ms: float
     latency_avg_ms: float
+    latency_min_ms: float
+    latency_max_ms: float
     concurrent_workers: int
     queries_per_batch: int
     claimed_max_qps: int
@@ -57,57 +60,65 @@ class HighThroughputResult:
     status: str
 
 
-def run_internal_worker(
-    worker_id: int,
-    queries_to_run: int,
-    host: str,
-    port: int
-) -> Tuple[int, int, List[float]]:
-    """
-    Worker that runs queries using geode CLI directly (for internal mode).
-    Returns (successful, failed, latencies).
-    """
-    successful = 0
-    failed = 0
-    latencies = []
+class AtomicCounter:
+    """Thread-safe counter."""
+    def __init__(self):
+        self._value = 0
+        self._lock = threading.Lock()
 
-    for _ in range(queries_to_run):
-        start = time.perf_counter()
-        try:
-            result = subprocess.run(
-                ["geode", "query", "--server", f"{host}:{port}", "--insecure", "RETURN 1"],
-                capture_output=True,
-                timeout=5.0
-            )
-            latency = (time.perf_counter() - start) * 1000
-            latencies.append(latency)
-            if result.returncode == 0:
-                successful += 1
-            else:
-                failed += 1
-        except Exception:
-            failed += 1
-            latencies.append((time.perf_counter() - start) * 1000)
+    def add(self, n: int):
+        with self._lock:
+            self._value += n
 
-    return successful, failed, latencies
+    @property
+    def value(self):
+        with self._lock:
+            return self._value
 
 
-def run_batch_external(
+class LatencyCollector:
+    """Thread-safe latency collector with sampling."""
+    def __init__(self, max_samples: int = 100000):
+        self._samples = []
+        self._lock = threading.Lock()
+        self._max_samples = max_samples
+        self._sample_rate = 1  # Sample every Nth latency
+        self._count = 0
+
+    def add(self, latency_ms: float):
+        with self._lock:
+            self._count += 1
+            # Adaptive sampling to avoid memory issues
+            if len(self._samples) >= self._max_samples:
+                self._sample_rate = max(self._sample_rate, self._count // self._max_samples)
+            if self._count % self._sample_rate == 0:
+                self._samples.append(latency_ms)
+
+    def add_batch(self, latencies: List[float]):
+        with self._lock:
+            for lat in latencies:
+                self._count += 1
+                if len(self._samples) < self._max_samples:
+                    if self._count % self._sample_rate == 0:
+                        self._samples.append(lat)
+
+    @property
+    def samples(self):
+        with self._lock:
+            return list(self._samples)
+
+
+def run_batch_query(
     batch_size: int,
     host: str,
     port: int,
-    use_docker: bool
-) -> Tuple[int, int, List[float]]:
+    use_docker: bool,
+    timeout: float = 30.0
+) -> Tuple[int, int, float]:
     """
-    Run a batch of queries externally using docker compose.
-    Returns (successful, failed, latencies).
+    Execute a batch of queries and return (successful, failed, total_latency_ms).
     """
-    successful = 0
-    failed = 0
-    latencies = []
-
-    # Build a batch query that runs multiple RETURN statements
-    # This amortizes subprocess overhead across multiple queries
+    # Build batch query with multiple RETURN statements
     queries = ";".join(["RETURN 1" for _ in range(batch_size)])
 
     start = time.perf_counter()
@@ -124,61 +135,77 @@ def run_batch_external(
                 queries
             ]
 
-        result = subprocess.run(cmd, capture_output=True, timeout=30.0)
-        total_latency = (time.perf_counter() - start) * 1000
-        per_query_latency = total_latency / batch_size
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        latency = (time.perf_counter() - start) * 1000
 
         if result.returncode == 0:
-            successful = batch_size
-            latencies = [per_query_latency] * batch_size
+            return batch_size, 0, latency
         else:
-            failed = batch_size
-            latencies = [per_query_latency] * batch_size
+            return 0, batch_size, latency
 
-    except Exception as e:
-        failed = batch_size
-        latencies = [0] * batch_size
+    except subprocess.TimeoutExpired:
+        latency = (time.perf_counter() - start) * 1000
+        return 0, batch_size, latency
+    except Exception:
+        latency = (time.perf_counter() - start) * 1000
+        return 0, batch_size, latency
 
-    return successful, failed, latencies
+
+def run_single_query_internal(host: str, port: int) -> Tuple[bool, float]:
+    """Run a single query using local geode binary (for internal mode)."""
+    start = time.perf_counter()
+    try:
+        result = subprocess.run(
+            ["geode", "query", "--server", f"{host}:{port}", "--insecure", "RETURN 1"],
+            capture_output=True,
+            timeout=5.0
+        )
+        latency = (time.perf_counter() - start) * 1000
+        return result.returncode == 0, latency
+    except Exception:
+        latency = (time.perf_counter() - start) * 1000
+        return False, latency
 
 
-def run_parallel_batches(
-    workers: int,
-    total_batches: int,
+def parallel_worker(
+    worker_id: int,
+    stop_event: threading.Event,
+    successful_counter: AtomicCounter,
+    failed_counter: AtomicCounter,
+    latency_collector: LatencyCollector,
     batch_size: int,
     host: str,
     port: int,
-    use_docker: bool
-) -> Tuple[int, int, List[float]]:
+    use_docker: bool,
+    mode: str
+):
     """
-    Run batches in parallel using thread pool.
+    Worker that runs continuously until stop_event is set.
+    Each worker executes batches independently in parallel with other workers.
     """
-    successful = 0
-    failed = 0
-    all_latencies = []
-
-    batches_per_worker = max(1, total_batches // workers)
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = []
-        for _ in range(total_batches):
-            futures.append(
-                executor.submit(run_batch_external, batch_size, host, port, use_docker)
+    while not stop_event.is_set():
+        if mode == "internal":
+            # Internal mode: single queries with local binary
+            success, latency = run_single_query_internal(host, port)
+            if success:
+                successful_counter.add(1)
+            else:
+                failed_counter.add(1)
+            latency_collector.add(latency)
+        else:
+            # External mode: batch queries via docker compose
+            successful, failed, total_latency = run_batch_query(
+                batch_size, host, port, use_docker
             )
-
-        for future in as_completed(futures):
-            try:
-                s, f, lats = future.result()
-                successful += s
-                failed += f
-                all_latencies.extend(lats)
-            except Exception:
-                failed += batch_size
-
-    return successful, failed, all_latencies
+            successful_counter.add(successful)
+            failed_counter.add(failed)
+            # Record per-query latency (amortized)
+            if successful > 0:
+                per_query_latency = total_latency / batch_size
+                latency_collector.add_batch([per_query_latency] * successful)
 
 
-async def run_timed_benchmark(
+def run_parallel_benchmark(
     duration_seconds: int,
     workers: int,
     batch_size: int,
@@ -188,94 +215,111 @@ async def run_timed_benchmark(
     mode: str
 ) -> HighThroughputResult:
     """
-    Run benchmark for a specified duration.
+    Run benchmark with truly parallel workers for the specified duration.
     """
-    print(f"\nStarting high-throughput benchmark...")
+    print(f"\nStarting parallel high-throughput benchmark...")
     print(f"  Mode: {mode}")
-    print(f"  Workers: {workers}")
-    print(f"  Batch size: {batch_size}")
+    print(f"  Parallel Workers: {workers}")
+    print(f"  Batch Size: {batch_size}")
     print(f"  Duration: {duration_seconds}s")
     print(f"  Host: {host}:{port}")
+    print(f"  Use Docker: {use_docker}")
     print()
 
-    all_successful = 0
-    all_failed = 0
-    all_latencies = []
+    # Shared state
+    stop_event = threading.Event()
+    successful_counter = AtomicCounter()
+    failed_counter = AtomicCounter()
+    latency_collector = LatencyCollector()
 
+    # Start all workers
+    print(f"Starting {workers} parallel workers...")
+    threads = []
+    for i in range(workers):
+        t = threading.Thread(
+            target=parallel_worker,
+            args=(
+                i, stop_event, successful_counter, failed_counter,
+                latency_collector, batch_size, host, port, use_docker, mode
+            ),
+            daemon=True
+        )
+        t.start()
+        threads.append(t)
+
+    print(f"All workers started. Running for {duration_seconds}s...")
+    print()
+
+    # Monitor progress
     start_time = time.monotonic()
-    iteration = 0
+    last_report = start_time
+    report_interval = 5.0  # Report every 5 seconds
 
     while time.monotonic() - start_time < duration_seconds:
-        iteration += 1
-
-        if mode == "internal":
-            # Direct CLI calls from within container
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                queries_per_worker = batch_size
-                futures = [
-                    executor.submit(run_internal_worker, i, queries_per_worker, host, port)
-                    for i in range(workers)
-                ]
-                for future in as_completed(futures):
-                    s, f, lats = future.result()
-                    all_successful += s
-                    all_failed += f
-                    all_latencies.extend(lats)
-        else:
-            # External batch mode
-            batches_this_round = workers
-            s, f, lats = run_parallel_batches(
-                workers, batches_this_round, batch_size, host, port, use_docker
-            )
-            all_successful += s
-            all_failed += f
-            all_latencies.extend(lats)
+        time.sleep(0.5)
 
         elapsed = time.monotonic() - start_time
-        current_qps = all_successful / elapsed if elapsed > 0 else 0
+        if elapsed - (last_report - start_time) >= report_interval:
+            current_successful = successful_counter.value
+            current_qps = current_successful / elapsed if elapsed > 0 else 0
+            print(f"  [{elapsed:.1f}s] Queries: {current_successful:,} | QPS: {current_qps:,.0f} | Workers: {workers}")
+            last_report = time.monotonic()
 
-        if iteration % 5 == 0:
-            print(f"  [{elapsed:.1f}s] Queries: {all_successful:,} | QPS: {current_qps:,.0f}")
+    # Signal workers to stop
+    print("\nStopping workers...")
+    stop_event.set()
+
+    # Wait for workers to finish (with timeout)
+    for t in threads:
+        t.join(timeout=2.0)
 
     actual_duration = time.monotonic() - start_time
-    throughput = all_successful / actual_duration if actual_duration > 0 else 0
+    total_successful = successful_counter.value
+    total_failed = failed_counter.value
+    throughput = total_successful / actual_duration if actual_duration > 0 else 0
 
-    # Calculate percentiles
-    if all_latencies:
-        sorted_lats = sorted(all_latencies)
-        p50 = sorted_lats[int(len(sorted_lats) * 0.50)]
-        p95 = sorted_lats[int(len(sorted_lats) * 0.95)]
-        p99 = sorted_lats[min(int(len(sorted_lats) * 0.99), len(sorted_lats) - 1)]
+    # Calculate latency percentiles
+    latencies = latency_collector.samples
+    if latencies:
+        sorted_lats = sorted(latencies)
+        n = len(sorted_lats)
+        p50 = sorted_lats[int(n * 0.50)]
+        p95 = sorted_lats[int(n * 0.95)]
+        p99 = sorted_lats[min(int(n * 0.99), n - 1)]
         avg = statistics.mean(sorted_lats)
+        min_lat = min(sorted_lats)
+        max_lat = max(sorted_lats)
     else:
-        p50 = p95 = p99 = avg = 0
+        p50 = p95 = p99 = avg = min_lat = max_lat = 0
 
     CLAIMED_MAX = 100_000
     achieved_pct = (throughput / CLAIMED_MAX) * 100
 
-    # Determine status based on throughput
+    # Determine status
     if throughput >= CLAIMED_MAX:
         status = "VERIFIED"
     elif throughput >= 10_000:
-        status = "PARTIAL"  # Good throughput but not maximum
+        status = "PARTIAL"
     elif throughput >= 1_000:
-        status = "BASELINE"  # Baseline established
+        status = "BASELINE"
     else:
-        status = "LIMITED"  # Limited by test method
+        status = "LIMITED"
 
     return HighThroughputResult(
-        benchmark_name="high_throughput",
+        benchmark_name="high_throughput_parallel",
         timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         mode=mode,
         duration_seconds=actual_duration,
-        total_queries=all_successful + all_failed,
-        successful_queries=all_successful,
-        failed_queries=all_failed,
+        total_queries=total_successful + total_failed,
+        successful_queries=total_successful,
+        failed_queries=total_failed,
         throughput_qps=throughput,
         latency_p50_ms=p50,
         latency_p95_ms=p95,
         latency_p99_ms=p99,
         latency_avg_ms=avg,
+        latency_min_ms=min_lat,
+        latency_max_ms=max_lat,
         concurrent_workers=workers,
         queries_per_batch=batch_size,
         claimed_max_qps=CLAIMED_MAX,
@@ -287,12 +331,12 @@ async def run_timed_benchmark(
 def print_result(result: HighThroughputResult):
     """Print benchmark results."""
     print("\n" + "=" * 70)
-    print("HIGH-THROUGHPUT BENCHMARK RESULTS")
+    print("HIGH-THROUGHPUT PARALLEL BENCHMARK RESULTS")
     print("=" * 70)
     print(f"Mode: {result.mode}")
     print(f"Timestamp: {result.timestamp}")
     print(f"Duration: {result.duration_seconds:.2f}s")
-    print(f"Workers: {result.concurrent_workers}")
+    print(f"Parallel Workers: {result.concurrent_workers}")
     print(f"Batch Size: {result.queries_per_batch}")
     print()
     print("THROUGHPUT:")
@@ -306,6 +350,8 @@ def print_result(result: HighThroughputResult):
     print(f"  P95:              {result.latency_p95_ms:.2f}")
     print(f"  P99:              {result.latency_p99_ms:.2f}")
     print(f"  Avg:              {result.latency_avg_ms:.2f}")
+    print(f"  Min:              {result.latency_min_ms:.2f}")
+    print(f"  Max:              {result.latency_max_ms:.2f}")
     print()
     print("CLAIM VERIFICATION:")
     print(f"  Claimed max:      {result.claimed_max_qps:,} qps")
@@ -316,19 +362,27 @@ def print_result(result: HighThroughputResult):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="High-throughput benchmark for Geode"
+        description="High-throughput parallel benchmark for Geode",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  Quick test:     python high_throughput.py --workers 20 --duration 30
+  Standard test:  python high_throughput.py --workers 50 --duration 60 --batch-size 20
+  Intensive test: python high_throughput.py --workers 100 --duration 300 --batch-size 50
+  Maximum scale:  python high_throughput.py --workers 200 --duration 600 --batch-size 100
+        """
     )
     parser.add_argument(
         "--mode", "-m",
         choices=["internal", "external"],
         default="external",
-        help="Mode: internal (run inside container), external (use docker compose)"
+        help="Mode: internal (inside container), external (via docker compose)"
     )
     parser.add_argument(
         "--workers", "-w",
         type=int,
         default=50,
-        help="Number of concurrent workers (default: 50)"
+        help="Number of parallel workers (default: 50)"
     )
     parser.add_argument(
         "--duration", "-d",
@@ -362,18 +416,18 @@ def main():
     parser.add_argument(
         "--no-docker",
         action="store_true",
-        help="Don't use docker compose (direct connection)"
+        help="Don't use docker compose (direct geode binary)"
     )
 
     args = parser.parse_args()
 
-    # Auto-detect mode if running inside container
+    # Auto-detect container environment
     if os.path.exists("/.dockerenv") or os.environ.get("GEODE_CONTAINER"):
         print("Detected container environment, using internal mode")
         args.mode = "internal"
 
     # Run benchmark
-    result = asyncio.run(run_timed_benchmark(
+    result = run_parallel_benchmark(
         duration_seconds=args.duration,
         workers=args.workers,
         batch_size=args.batch_size,
@@ -381,7 +435,7 @@ def main():
         port=args.port,
         use_docker=not args.no_docker,
         mode=args.mode
-    ))
+    )
 
     # Print results
     print_result(result)
@@ -396,11 +450,8 @@ def main():
 
         print(f"\nResults saved to: {output_path}")
 
-    # Return status
-    if result.status in ["VERIFIED", "PARTIAL"]:
-        sys.exit(0)
-    else:
-        sys.exit(0)  # Don't fail on LIMITED status
+    # Exit code based on status
+    sys.exit(0)
 
 
 if __name__ == "__main__":

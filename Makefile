@@ -221,6 +221,88 @@ benchmark-hightp-max: ## Maximum high-throughput test (600s, 200 workers, 100 ba
 		--batch-size 100 \
 		--output $(REPORTS_DIR)/hightp_max.json
 
+##@ Multi-Client Benchmarks
+
+benchmark-multi-cli: ## CLI-only baseline benchmark (50 workers)
+	@echo "Running CLI-only baseline benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients cli \
+		--workers 50 \
+		--duration 60 \
+		--batch-size 20 \
+		--output $(REPORTS_DIR)/multi_cli.json
+
+benchmark-multi-native: ## Native clients benchmark (Go, Python - 100 workers each)
+	@echo "Running native clients benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients go,python \
+		--workers 100 \
+		--duration 120 \
+		--output $(REPORTS_DIR)/multi_native.json
+
+benchmark-multi-all: ## All clients in parallel (50 workers each)
+	@echo "Running all-clients benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients all \
+		--workers 50 \
+		--duration 120 \
+		--output $(REPORTS_DIR)/multi_all.json
+
+benchmark-multi-intensive: ## Intensive multi-client test (200 workers each, 300s)
+	@echo "Running intensive multi-client benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients cli,go,python \
+		--workers 200 \
+		--duration 300 \
+		--batch-size 50 \
+		--output $(REPORTS_DIR)/multi_intensive.json
+
+##@ Statistical Benchmarks (Publication-Ready)
+
+benchmark-stats-quick: ## Quick statistical benchmark (3 runs, 30s each)
+	@echo "Running quick statistical benchmark..."
+	@mkdir -p $(REPORTS_DIR)/benchmark
+	@$(PYTHON) benchmarks/load-tests/benchmark_framework.py \
+		--runs 3 \
+		--workers 20 \
+		--duration 30 \
+		--output-dir $(REPORTS_DIR)/benchmark
+
+benchmark-stats-standard: ## Standard statistical benchmark (5 runs, 60s each)
+	@echo "Running standard statistical benchmark..."
+	@mkdir -p $(REPORTS_DIR)/benchmark
+	@$(PYTHON) benchmarks/load-tests/benchmark_framework.py \
+		--runs 5 \
+		--workers 50 \
+		--duration 60 \
+		--output-dir $(REPORTS_DIR)/benchmark
+
+benchmark-stats-publication: ## Publication-quality benchmark (10 runs, 120s each)
+	@echo "Running publication-quality statistical benchmark..."
+	@echo "This will produce statistically significant results for publication"
+	@mkdir -p $(REPORTS_DIR)/benchmark
+	@$(PYTHON) benchmarks/load-tests/benchmark_framework.py \
+		--runs 10 \
+		--workers 100 \
+		--duration 120 \
+		--batch-size 20 \
+		--output-dir $(REPORTS_DIR)/benchmark
+
+benchmark-stats-intensive: ## Intensive statistical benchmark (10 runs, 300s each, 200 workers)
+	@echo "Running intensive statistical benchmark..."
+	@echo "Warning: This will take a significant amount of time"
+	@mkdir -p $(REPORTS_DIR)/benchmark
+	@$(PYTHON) benchmarks/load-tests/benchmark_framework.py \
+		--runs 10 \
+		--workers 200 \
+		--duration 300 \
+		--batch-size 50 \
+		--output-dir $(REPORTS_DIR)/benchmark
+
 ##@ Production Deployment
 
 production-up: ## Start Geode with production settings
