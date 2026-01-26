@@ -13,6 +13,10 @@
 .PHONY: all setup build test test-gql test-clients test-features test-security \
         benchmark benchmark-throughput benchmark-latency benchmark-vector \
         benchmark-standard benchmark-full benchmark-extreme benchmark-scale \
+        benchmark-hightp-quick benchmark-hightp-standard benchmark-hightp-intensive benchmark-hightp-max \
+        benchmark-multi-cli benchmark-multi-go benchmark-multi-rust benchmark-multi-zig \
+        benchmark-multi-nodejs benchmark-multi-python benchmark-multi-native benchmark-multi-all benchmark-multi-intensive \
+        benchmark-stats-quick benchmark-stats-standard benchmark-stats-publication benchmark-stats-intensive \
         production-up production-up-monitoring production-down production-logs \
         production-status production-shell setup-server \
         verify verify-claims verify-canary \
@@ -233,11 +237,56 @@ benchmark-multi-cli: ## CLI-only baseline benchmark (50 workers)
 		--batch-size 20 \
 		--output $(REPORTS_DIR)/multi_cli.json
 
-benchmark-multi-native: ## Native clients benchmark (Go, Python - 100 workers each)
+benchmark-multi-go: ## Go client benchmark (100 workers)
+	@echo "Running Go client benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients go \
+		--workers 100 \
+		--duration 60 \
+		--output $(REPORTS_DIR)/multi_go.json
+
+benchmark-multi-rust: ## Rust client benchmark (100 workers)
+	@echo "Running Rust client benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients rust \
+		--workers 100 \
+		--duration 60 \
+		--output $(REPORTS_DIR)/multi_rust.json
+
+benchmark-multi-zig: ## Zig client benchmark (100 workers)
+	@echo "Running Zig client benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients zig \
+		--workers 100 \
+		--duration 60 \
+		--output $(REPORTS_DIR)/multi_zig.json
+
+benchmark-multi-nodejs: ## Node.js client benchmark (100 workers)
+	@echo "Running Node.js client benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients nodejs \
+		--workers 100 \
+		--duration 60 \
+		--output $(REPORTS_DIR)/multi_nodejs.json
+
+benchmark-multi-python: ## Python client benchmark (100 workers)
+	@echo "Running Python client benchmark..."
+	@mkdir -p $(REPORTS_DIR)
+	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
+		--clients python \
+		--workers 100 \
+		--duration 60 \
+		--output $(REPORTS_DIR)/multi_python.json
+
+benchmark-multi-native: ## Native clients benchmark (Go, Rust, Zig - 100 workers each)
 	@echo "Running native clients benchmark..."
 	@mkdir -p $(REPORTS_DIR)
 	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
-		--clients go,python \
+		--clients go,rust,zig \
 		--workers 100 \
 		--duration 120 \
 		--output $(REPORTS_DIR)/multi_native.json
@@ -251,11 +300,11 @@ benchmark-multi-all: ## All clients in parallel (50 workers each)
 		--duration 120 \
 		--output $(REPORTS_DIR)/multi_all.json
 
-benchmark-multi-intensive: ## Intensive multi-client test (200 workers each, 300s)
+benchmark-multi-intensive: ## Intensive multi-client test (all clients, 200 workers each, 300s)
 	@echo "Running intensive multi-client benchmark..."
 	@mkdir -p $(REPORTS_DIR)
 	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
-		--clients cli,go,python \
+		--clients cli,go,rust,zig,python,nodejs \
 		--workers 200 \
 		--duration 300 \
 		--batch-size 50 \

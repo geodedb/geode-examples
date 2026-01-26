@@ -3,7 +3,7 @@
 Multi-Client High-Throughput Benchmark for Geode
 
 This benchmark runs multiple client implementations in parallel to achieve
-maximum throughput. Supports native clients (Go, Rust, Python) which maintain
+maximum throughput. Supports native clients (Go, Rust, Python, Zig, Node.js) which maintain
 persistent QUIC connections, eliminating subprocess overhead.
 
 CANARY: REQ=REQ-PERF-MULTICLIENT-001; FEATURE="MultiClientBench"; ASPECT=Performance; STATUS=TESTED
@@ -13,10 +13,10 @@ Usage:
     python benchmarks/load-tests/multi_client_benchmark.py --clients all
 
     # Run with specific clients
-    python benchmarks/load-tests/multi_client_benchmark.py --clients go,rust,python
+    python benchmarks/load-tests/multi_client_benchmark.py --clients go,zig,nodejs,python
 
     # High-scale test with 100 workers per client
-    python benchmarks/load-tests/multi_client_benchmark.py --clients go,rust --workers 100 --duration 120
+    python benchmarks/load-tests/multi_client_benchmark.py --clients go,zig --workers 100 --duration 120
 
     # CLI-only baseline test
     python benchmarks/load-tests/multi_client_benchmark.py --clients cli --workers 50 --batch-size 20
@@ -438,6 +438,556 @@ def run_python_benchmark(
 
 
 # =============================================================================
+# Zig Client
+# =============================================================================
+
+ZIG_BENCHMARK_CODE = '''
+const std = @import("std");
+const GeodeClient = @import("geode_client").GeodeClient;
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    var workers: u32 = 10;
+    var duration: u32 = 30;
+    var host: []const u8 = "localhost";
+    var port: u16 = 3141;
+    var output_file: ?[]const u8 = null;
+
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--workers") and i + 1 < args.len) {
+            workers = try std.fmt.parseInt(u32, args[i + 1], 10);
+            i += 1;
+        } else if (std.mem.eql(u8, args[i], "--duration") and i + 1 < args.len) {
+            duration = try std.fmt.parseInt(u32, args[i + 1], 10);
+            i += 1;
+        } else if (std.mem.eql(u8, args[i], "--host") and i + 1 < args.len) {
+            host = args[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, args[i], "--port") and i + 1 < args.len) {
+            port = try std.fmt.parseInt(u16, args[i + 1], 10);
+            i += 1;
+        } else if (std.mem.eql(u8, args[i], "--output") and i + 1 < args.len) {
+            output_file = args[i + 1];
+            i += 1;
+        }
+    }
+
+    var successful = std.atomic.Value(u64).init(0);
+    var failed = std.atomic.Value(u64).init(0);
+    var running = std.atomic.Value(bool).init(true);
+
+    var threads = try allocator.alloc(std.Thread, workers);
+    defer allocator.free(threads);
+
+    const start_time = std.time.milliTimestamp();
+
+    // Spawn worker threads
+    for (threads) |*t| {
+        t.* = try std.Thread.spawn(.{}, worker, .{ host, port, &successful, &failed, &running });
+    }
+
+    // Run for specified duration
+    std.time.sleep(duration * std.time.ns_per_s);
+    running.store(false, .release);
+
+    // Wait for workers
+    for (threads) |t| {
+        t.join();
+    }
+
+    const elapsed_ms = std.time.milliTimestamp() - start_time;
+    const elapsed_secs = @as(f64, @floatFromInt(elapsed_ms)) / 1000.0;
+    const total_successful = successful.load(.acquire);
+    const total_failed = failed.load(.acquire);
+    const qps = @as(f64, @floatFromInt(total_successful)) / elapsed_secs;
+
+    // Output results
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Zig Client: {} queries, {d:.0} qps\\n", .{ total_successful, qps });
+
+    if (output_file) |path| {
+        var file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+        try std.json.stringify(.{
+            .total_queries = total_successful + total_failed,
+            .successful = total_successful,
+            .failed = total_failed,
+            .duration_secs = elapsed_secs,
+            .qps = qps,
+        }, .{}, file.writer());
+    }
+}
+
+fn worker(host: []const u8, port: u16, successful: *std.atomic.Value(u64), failed: *std.atomic.Value(u64), running: *std.atomic.Value(bool)) void {
+    var client = GeodeClient.init(host, port, .{ .insecure = true }) catch return;
+    defer client.deinit();
+
+    while (running.load(.acquire)) {
+        const result = client.query("RETURN 1") catch {
+            _ = failed.fetchAdd(1, .monotonic);
+            continue;
+        };
+        _ = result;
+        _ = successful.fetchAdd(1, .monotonic);
+    }
+}
+'''
+
+
+def run_zig_benchmark(
+    workers: int,
+    duration: int,
+    host: str,
+    port: int,
+    output_file: Path
+) -> Optional[ClientResult]:
+    """Run Zig client benchmark."""
+    # Check if Zig client is available
+    zig_client_dir = Path("clients/zig")
+    if not zig_client_dir.exists():
+        # Try geode-client-zig in parent directory
+        zig_client_dir = Path("../geode-client-zig")
+        if not zig_client_dir.exists():
+            print("  Zig client not available, skipping")
+            return None
+
+    # Check for zig binary
+    if not shutil.which("zig"):
+        print("  Zig compiler not found, skipping")
+        return None
+
+    # Use the existing zig client benchmark if available
+    bench_exe = zig_client_dir / "zig-out" / "bin" / "benchmark"
+    if not bench_exe.exists():
+        # Try to build
+        try:
+            result = subprocess.run(
+                ["zig", "build", "-Doptimize=ReleaseFast"],
+                cwd=zig_client_dir,
+                capture_output=True,
+                timeout=120
+            )
+            if result.returncode != 0:
+                print(f"  Zig build failed: {result.stderr.decode()}")
+                return None
+        except Exception as e:
+            print(f"  Zig build error: {e}")
+            return None
+
+    # Run the benchmark
+    try:
+        result = subprocess.run(
+            [str(bench_exe),
+             "--workers", str(workers),
+             "--duration", str(duration),
+             "--host", host,
+             "--port", str(port),
+             "--output", str(output_file)],
+            capture_output=True,
+            text=True,
+            timeout=duration + 60
+        )
+
+        if result.returncode != 0:
+            print(f"  Zig benchmark failed: {result.stderr}")
+            return None
+
+        # Read results
+        if output_file.exists():
+            data = json.loads(output_file.read_text())
+            return ClientResult(
+                client_name="zig",
+                workers=workers,
+                total_queries=data.get("total_queries", 0),
+                successful_queries=data.get("successful", 0),
+                failed_queries=data.get("failed", 0),
+                throughput_qps=data.get("qps", 0),
+                latency_p50_ms=0,
+                latency_p99_ms=0,
+                duration_seconds=data.get("duration_secs", duration),
+                status="OK"
+            )
+
+    except subprocess.TimeoutExpired:
+        print("  Zig benchmark timed out")
+        return None
+    except Exception as e:
+        print(f"  Zig benchmark error: {e}")
+        return None
+
+    return None
+
+
+# =============================================================================
+# Node.js Client
+# =============================================================================
+
+NODEJS_BENCHMARK_CODE = '''
+const { performance } = require('perf_hooks');
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const fs = require('fs');
+const path = require('path');
+
+// Try to load the geode client
+let GeodeClient;
+try {
+    GeodeClient = require('@geode/client').GeodeClient;
+} catch (e) {
+    // Fallback to local client if available
+    try {
+        GeodeClient = require('./client').GeodeClient;
+    } catch (e2) {
+        console.error('Geode client not found');
+        process.exit(1);
+    }
+}
+
+async function runWorker(host, port, duration) {
+    const client = new GeodeClient({ host, port, insecure: true });
+    await client.connect();
+
+    let successful = 0;
+    let failed = 0;
+    const endTime = Date.now() + (duration * 1000);
+
+    while (Date.now() < endTime) {
+        try {
+            await client.query('RETURN 1');
+            successful++;
+        } catch (e) {
+            failed++;
+        }
+    }
+
+    await client.close();
+    return { successful, failed };
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+    let workers = 10;
+    let duration = 30;
+    let host = 'localhost';
+    let port = 3141;
+    let outputFile = null;
+
+    for (let i = 0; i < args.length; i += 2) {
+        switch (args[i]) {
+            case '--workers': workers = parseInt(args[i + 1]); break;
+            case '--duration': duration = parseInt(args[i + 1]); break;
+            case '--host': host = args[i + 1]; break;
+            case '--port': port = parseInt(args[i + 1]); break;
+            case '--output': outputFile = args[i + 1]; break;
+        }
+    }
+
+    const startTime = performance.now();
+    const promises = [];
+
+    for (let i = 0; i < workers; i++) {
+        promises.push(runWorker(host, port, duration));
+    }
+
+    const results = await Promise.all(promises);
+    const elapsed = (performance.now() - startTime) / 1000;
+
+    let totalSuccessful = 0;
+    let totalFailed = 0;
+    for (const r of results) {
+        totalSuccessful += r.successful;
+        totalFailed += r.failed;
+    }
+
+    const qps = totalSuccessful / elapsed;
+
+    console.log(`Node.js Client: ${totalSuccessful} queries, ${Math.round(qps)} qps`);
+
+    if (outputFile) {
+        const result = {
+            total_queries: totalSuccessful + totalFailed,
+            successful: totalSuccessful,
+            failed: totalFailed,
+            duration_secs: elapsed,
+            qps: qps
+        };
+        fs.writeFileSync(outputFile, JSON.stringify(result, null, 2));
+    }
+}
+
+main().catch(console.error);
+'''
+
+
+def run_nodejs_benchmark(
+    workers: int,
+    duration: int,
+    host: str,
+    port: int,
+    output_file: Path
+) -> Optional[ClientResult]:
+    """Run Node.js client benchmark."""
+    # Check if Node.js is available
+    if not shutil.which("node"):
+        print("  Node.js not found, skipping")
+        return None
+
+    # Check for Node.js client
+    nodejs_client_dir = Path("clients/nodejs")
+    if not nodejs_client_dir.exists():
+        nodejs_client_dir = Path("clients/node")
+        if not nodejs_client_dir.exists():
+            # Try geode-client-nodejs in parent directory
+            nodejs_client_dir = Path("../geode-client-nodejs")
+            if not nodejs_client_dir.exists():
+                print("  Node.js client not available, skipping")
+                return None
+
+    # Create temporary benchmark file
+    bench_file = nodejs_client_dir / "benchmark.js"
+
+    try:
+        bench_file.write_text(NODEJS_BENCHMARK_CODE)
+
+        # Install dependencies if needed
+        if not (nodejs_client_dir / "node_modules").exists():
+            subprocess.run(
+                ["npm", "install"],
+                cwd=nodejs_client_dir,
+                capture_output=True,
+                timeout=120
+            )
+
+        result = subprocess.run(
+            ["node", str(bench_file),
+             "--workers", str(workers),
+             "--duration", str(duration),
+             "--host", host,
+             "--port", str(port),
+             "--output", str(output_file)],
+            cwd=nodejs_client_dir,
+            capture_output=True,
+            text=True,
+            timeout=duration + 60
+        )
+
+        if result.returncode != 0:
+            print(f"  Node.js benchmark failed: {result.stderr}")
+            return None
+
+        # Read results
+        if output_file.exists():
+            data = json.loads(output_file.read_text())
+            return ClientResult(
+                client_name="nodejs",
+                workers=workers,
+                total_queries=data.get("total_queries", 0),
+                successful_queries=data.get("successful", 0),
+                failed_queries=data.get("failed", 0),
+                throughput_qps=data.get("qps", 0),
+                latency_p50_ms=0,
+                latency_p99_ms=0,
+                duration_seconds=data.get("duration_secs", duration),
+                status="OK"
+            )
+
+    except subprocess.TimeoutExpired:
+        print("  Node.js benchmark timed out")
+        return None
+    except Exception as e:
+        print(f"  Node.js benchmark error: {e}")
+        return None
+    finally:
+        if bench_file.exists():
+            bench_file.unlink()
+
+    return None
+
+
+# =============================================================================
+# Rust Client
+# =============================================================================
+
+RUST_BENCHMARK_CODE = '''
+use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::task::JoinSet;
+
+// Use the geode client crate
+use geode_client::GeodeClient;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    let mut workers = 10u32;
+    let mut duration_secs = 30u64;
+    let mut host = "localhost".to_string();
+    let mut port = 3141u16;
+    let mut output_file: Option<String> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--workers" => { workers = args[i + 1].parse()?; i += 2; }
+            "--duration" => { duration_secs = args[i + 1].parse()?; i += 2; }
+            "--host" => { host = args[i + 1].clone(); i += 2; }
+            "--port" => { port = args[i + 1].parse()?; i += 2; }
+            "--output" => { output_file = Some(args[i + 1].clone()); i += 2; }
+            _ => { i += 1; }
+        }
+    }
+
+    let successful = Arc::new(AtomicU64::new(0));
+    let failed = Arc::new(AtomicU64::new(0));
+    let running = Arc::new(AtomicBool::new(true));
+
+    let start = Instant::now();
+    let mut tasks = JoinSet::new();
+
+    for _ in 0..workers {
+        let host = host.clone();
+        let successful = successful.clone();
+        let failed = failed.clone();
+        let running = running.clone();
+
+        tasks.spawn(async move {
+            let client = match GeodeClient::connect(&host, port, true).await {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+
+            while running.load(Ordering::Relaxed) {
+                match client.query("RETURN 1").await {
+                    Ok(_) => { successful.fetch_add(1, Ordering::Relaxed); }
+                    Err(_) => { failed.fetch_add(1, Ordering::Relaxed); }
+                }
+            }
+        });
+    }
+
+    tokio::time::sleep(Duration::from_secs(duration_secs)).await;
+    running.store(false, Ordering::Relaxed);
+
+    while tasks.join_next().await.is_some() {}
+
+    let elapsed = start.elapsed().as_secs_f64();
+    let total_successful = successful.load(Ordering::Relaxed);
+    let total_failed = failed.load(Ordering::Relaxed);
+    let qps = total_successful as f64 / elapsed;
+
+    println!("Rust Client: {} queries, {:.0} qps", total_successful, qps);
+
+    if let Some(path) = output_file {
+        let result = serde_json::json!({
+            "total_queries": total_successful + total_failed,
+            "successful": total_successful,
+            "failed": total_failed,
+            "duration_secs": elapsed,
+            "qps": qps
+        });
+        std::fs::write(path, serde_json::to_string_pretty(&result)?)?;
+    }
+
+    Ok(())
+}
+'''
+
+
+def run_rust_benchmark(
+    workers: int,
+    duration: int,
+    host: str,
+    port: int,
+    output_file: Path
+) -> Optional[ClientResult]:
+    """Run Rust client benchmark."""
+    # Check if Rust/Cargo is available
+    if not shutil.which("cargo"):
+        print("  Cargo not found, skipping Rust benchmark")
+        return None
+
+    # Check for Rust client
+    rust_client_dir = Path("clients/rust")
+    if not rust_client_dir.exists():
+        rust_client_dir = Path("../geode-client-rust")
+        if not rust_client_dir.exists():
+            print("  Rust client not available, skipping")
+            return None
+
+    # Check for pre-built benchmark binary
+    bench_exe = rust_client_dir / "target" / "release" / "benchmark"
+    if not bench_exe.exists():
+        # Try to build
+        try:
+            result = subprocess.run(
+                ["cargo", "build", "--release", "--bin", "benchmark"],
+                cwd=rust_client_dir,
+                capture_output=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                print(f"  Rust build failed: {result.stderr.decode()}")
+                return None
+        except Exception as e:
+            print(f"  Rust build error: {e}")
+            return None
+
+    if not bench_exe.exists():
+        print("  Rust benchmark binary not found after build")
+        return None
+
+    # Run the benchmark
+    try:
+        result = subprocess.run(
+            [str(bench_exe),
+             "--workers", str(workers),
+             "--duration", str(duration),
+             "--host", host,
+             "--port", str(port),
+             "--output", str(output_file)],
+            capture_output=True,
+            text=True,
+            timeout=duration + 60
+        )
+
+        if result.returncode != 0:
+            print(f"  Rust benchmark failed: {result.stderr}")
+            return None
+
+        # Read results
+        if output_file.exists():
+            data = json.loads(output_file.read_text())
+            return ClientResult(
+                client_name="rust",
+                workers=workers,
+                total_queries=data.get("total_queries", 0),
+                successful_queries=data.get("successful", 0),
+                failed_queries=data.get("failed", 0),
+                throughput_qps=data.get("qps", 0),
+                latency_p50_ms=0,
+                latency_p99_ms=0,
+                duration_seconds=data.get("duration_secs", duration),
+                status="OK"
+            )
+
+    except subprocess.TimeoutExpired:
+        print("  Rust benchmark timed out")
+        return None
+    except Exception as e:
+        print(f"  Rust benchmark error: {e}")
+        return None
+
+    return None
+
+
+# =============================================================================
 # CLI Benchmark Runner
 # =============================================================================
 
@@ -547,9 +1097,20 @@ def run_multi_client_benchmark(
                     workers_per_client, duration, host, port, output_file
                 )
             elif client == "rust":
-                # Rust benchmark would be similar to Go
-                print(f"  Rust client benchmark not yet implemented")
-                continue
+                future = executor.submit(
+                    run_rust_benchmark,
+                    workers_per_client, duration, host, port, output_file
+                )
+            elif client == "zig":
+                future = executor.submit(
+                    run_zig_benchmark,
+                    workers_per_client, duration, host, port, output_file
+                )
+            elif client == "nodejs" or client == "node":
+                future = executor.submit(
+                    run_nodejs_benchmark,
+                    workers_per_client, duration, host, port, output_file
+                )
             else:
                 print(f"  Unknown client: {client}")
                 continue
@@ -643,6 +1204,8 @@ Available clients:
   go      - Go native client (persistent connections)
   python  - Python async client (aioquic)
   rust    - Rust native client (tokio/quinn)
+  zig     - Zig native client (QUIC)
+  nodejs  - Node.js client (async)
   all     - All available clients
 
 Examples:
@@ -650,10 +1213,13 @@ Examples:
   python multi_client_benchmark.py --clients cli --workers 50
 
   # Native clients for high throughput
-  python multi_client_benchmark.py --clients go,python --workers 100
+  python multi_client_benchmark.py --clients go,rust,zig --workers 100
 
   # All clients in parallel
   python multi_client_benchmark.py --clients all --workers 50 --duration 120
+
+  # Specific set of clients
+  python multi_client_benchmark.py --clients go,zig,nodejs,python --workers 100 --duration 120
         """
     )
     parser.add_argument(
@@ -713,7 +1279,7 @@ Examples:
 
     # Parse clients
     if args.clients == "all":
-        clients = ["cli", "go", "python"]
+        clients = ["cli", "go", "python", "rust", "zig", "nodejs"]
     else:
         clients = [c.strip() for c in args.clients.split(",")]
 
