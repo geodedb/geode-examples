@@ -7,18 +7,22 @@ pub fn build(b: *std.Build) void {
     // Basic example
     const basic_exe = b.addExecutable(.{
         .name = "basic_example",
-        .root_source_file = b.path("examples/basic/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/basic/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     b.installArtifact(basic_exe);
 
     // Transaction example
     const txn_exe = b.addExecutable(.{
         .name = "transaction_example",
-        .root_source_file = b.path("examples/transactions/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/transactions/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     b.installArtifact(txn_exe);
 

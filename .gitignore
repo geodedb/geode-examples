@@ -3,6 +3,7 @@
 # Build artifacts
 zig-out/
 zig-cache/
+.zig-cache/
 target/
 
 # Python

@@ -30,7 +30,7 @@ const GeodeClient = struct {
         if (!self.connected) return error.NotConnected;
         const display_len = @min(query.len, 45);
         std.debug.print("  Executing: {s}...\n", .{query[0..display_len]});
-        std.time.sleep(1_000_000);
+        std.Thread.sleep(1_000_000);
     }
 
     pub fn beginTransaction(self: *Self) !Transaction {
@@ -55,7 +55,7 @@ const Transaction = struct {
         if (!self.active) return error.TransactionNotActive;
         const display_len = @min(query.len, 40);
         std.debug.print("    [TXN] Executing: {s}...\n", .{query[0..display_len]});
-        std.time.sleep(1_000_000);
+        std.Thread.sleep(1_000_000);
     }
 
     pub fn savepoint(self: *Self, name: []const u8) !void {

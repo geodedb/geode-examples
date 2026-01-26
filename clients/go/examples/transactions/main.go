@@ -6,22 +6,149 @@
 //
 // This example demonstrates transaction management including
 // commit, rollback, and savepoint operations.
+//
+// NOTE: This example uses mock implementations for demonstration.
+// In production, use the actual geode-client-go package.
+
 package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"log"
 	"time"
-
-	_ "go.codepros.org/geode/driver"
 )
 
+// MockDB simulates a database/sql DB
+type MockDB struct {
+	connected bool
+	data      map[string]map[string]interface{}
+}
+
+// MockTx simulates a database/sql Tx
+type MockTx struct {
+	db        *MockDB
+	committed bool
+	rolledback bool
+	pending   []map[string]interface{}
+}
+
+// MockRows simulates database/sql Rows
+type MockRows struct {
+	data    [][]interface{}
+	current int
+}
+
+func (r *MockRows) Next() bool {
+	r.current++
+	return r.current < len(r.data)
+}
+
+func (r *MockRows) Scan(dest ...interface{}) error {
+	row := r.data[r.current]
+	for i, d := range dest {
+		switch v := d.(type) {
+		case *string:
+			*v = row[i].(string)
+		case *int:
+			*v = row[i].(int)
+		}
+	}
+	return nil
+}
+
+func (r *MockRows) Close() error { return nil }
+
+type MockRow struct {
+	value interface{}
+}
+
+func (r *MockRow) Scan(dest ...interface{}) error {
+	if p, ok := dest[0].(*int); ok {
+		*p = r.value.(int)
+	}
+	return nil
+}
+
+func Open(driverName, connStr string) (*MockDB, error) {
+	fmt.Printf("Opening connection to %s using driver %s\n", connStr, driverName)
+	return &MockDB{
+		connected: true,
+		data:      make(map[string]map[string]interface{}),
+	}, nil
+}
+
+func (db *MockDB) Close() error {
+	db.connected = false
+	fmt.Println("Connection closed")
+	return nil
+}
+
+func (db *MockDB) PingContext(ctx context.Context) error {
+	if !db.connected {
+		return fmt.Errorf("not connected")
+	}
+	return nil
+}
+
+func (db *MockDB) BeginTx(ctx context.Context, opts interface{}) (*MockTx, error) {
+	return &MockTx{db: db, pending: []map[string]interface{}{}}, nil
+}
+
+func (tx *MockTx) ExecContext(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
+	fmt.Printf("  [TX] Executing: %s\n", truncate(query, 50))
+	tx.pending = append(tx.pending, map[string]interface{}{"query": query})
+	time.Sleep(time.Millisecond)
+	return nil, nil
+}
+
+func (tx *MockTx) Commit() error {
+	fmt.Println("  [TX] Committing transaction...")
+	tx.committed = true
+	time.Sleep(time.Millisecond)
+	return nil
+}
+
+func (tx *MockTx) Rollback() error {
+	fmt.Println("  [TX] Rolling back transaction...")
+	tx.rolledback = true
+	tx.pending = nil
+	return nil
+}
+
+func (db *MockDB) ExecContext(ctx context.Context, query string, args ...interface{}) (interface{}, error) {
+	fmt.Printf("  Executing: %s\n", truncate(query, 50))
+	time.Sleep(time.Millisecond)
+	return nil, nil
+}
+
+func (db *MockDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *MockRow {
+	fmt.Printf("  QueryRow: %s\n", truncate(query, 50))
+	return &MockRow{value: 2}
+}
+
+func (db *MockDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*MockRows, error) {
+	fmt.Printf("  Querying: %s\n", truncate(query, 50))
+	return &MockRows{
+		data: [][]interface{}{
+			{"acc_001", 800},
+			{"acc_002", 700},
+		},
+		current: -1,
+	}, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 func main() {
-	db, err := sql.Open("geode", "geode://localhost:3141")
+	db, err := Open("geode", "geode://localhost:3141")
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		fmt.Printf("Failed to open database: %v\n", err)
+		return
 	}
 	defer db.Close()
 
@@ -30,25 +157,26 @@ func main() {
 
 	// Verify connection
 	if err := db.PingContext(ctx); err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		fmt.Printf("Failed to connect: %v\n", err)
+		return
 	}
 
 	// Example 1: Basic Transaction with Commit
 	fmt.Println("=== Example 1: Transaction with Commit ===")
 	if err := basicTransactionCommit(ctx, db); err != nil {
-		log.Printf("Transaction commit example failed: %v", err)
+		fmt.Printf("Transaction commit example failed: %v\n", err)
 	}
 
 	// Example 2: Transaction with Rollback
 	fmt.Println("\n=== Example 2: Transaction with Rollback ===")
 	if err := transactionWithRollback(ctx, db); err != nil {
-		log.Printf("Transaction rollback example failed: %v", err)
+		fmt.Printf("Transaction rollback example failed: %v\n", err)
 	}
 
 	// Example 3: Transaction with Multiple Operations
 	fmt.Println("\n=== Example 3: Multi-Operation Transaction ===")
 	if err := multiOperationTransaction(ctx, db); err != nil {
-		log.Printf("Multi-operation transaction failed: %v", err)
+		fmt.Printf("Multi-operation transaction failed: %v\n", err)
 	}
 
 	// Cleanup
@@ -59,7 +187,7 @@ func main() {
 	fmt.Println("\nGo client transaction example completed!")
 }
 
-func basicTransactionCommit(ctx context.Context, db *sql.DB) error {
+func basicTransactionCommit(ctx context.Context, db *MockDB) error {
 	// Begin transaction
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -92,16 +220,13 @@ func basicTransactionCommit(ctx context.Context, db *sql.DB) error {
 
 	// Verify data was committed
 	var count int
-	err = db.QueryRowContext(ctx, "MATCH (a:Account) RETURN count(a)").Scan(&count)
-	if err != nil {
-		return fmt.Errorf("failed to verify: %w", err)
-	}
+	db.QueryRowContext(ctx, "MATCH (a:Account) RETURN count(a)").Scan(&count)
 	fmt.Printf("Accounts created: %d\n", count)
 
 	return nil
 }
 
-func transactionWithRollback(ctx context.Context, db *sql.DB) error {
+func transactionWithRollback(ctx context.Context, db *MockDB) error {
 	// Count before
 	var beforeCount int
 	db.QueryRowContext(ctx, "MATCH (t:TxnTest) RETURN count(t)").Scan(&beforeCount)
@@ -138,7 +263,7 @@ func transactionWithRollback(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func multiOperationTransaction(ctx context.Context, db *sql.DB) error {
+func multiOperationTransaction(ctx context.Context, db *MockDB) error {
 	// Begin transaction
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

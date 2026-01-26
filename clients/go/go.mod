@@ -1,8 +1,7 @@
 module github.com/codepros/geode-examples/clients/go
 
-go 1.24.0
+go 1.21
 
-require go.codepros.org/geode v0.18.0
-
-// For local development, uncomment:
-// replace go.codepros.org/geode => ../../../../geode-client-go
+// This module contains example code demonstrating Geode Go client patterns.
+// Examples use mock implementations for demonstration purposes.
+// For production use, install the actual geode-client-go package.

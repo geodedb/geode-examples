@@ -110,7 +110,7 @@ run_client_tests() {
     # Python client
     if [ -f "${PROJECT_ROOT}/clients/python/requirements.txt" ]; then
         echo "Running Python client tests..."
-        if (cd "${PROJECT_ROOT}/clients/python" && python -m pytest -v tests/ > "${REPORTS_DIR}/python-tests.log" 2>&1); then
+        if (cd "${PROJECT_ROOT}/clients/python" && python3 -m pytest -v tests/ > "${REPORTS_DIR}/python-tests.log" 2>&1); then
             log_success "Python client tests"
             PASSED=$((PASSED + 1))
         else
@@ -158,7 +158,7 @@ run_feature_tests() {
 
     if [ -d "${PROJECT_ROOT}/verification/claims/features" ]; then
         echo "Running feature verification..."
-        if python -m pytest "${PROJECT_ROOT}/verification/claims/features/" \
+        if python3 -m pytest "${PROJECT_ROOT}/verification/claims/features/" \
             -v --tb=short \
             --junitxml="${REPORTS_DIR}/features.xml" \
             > "${REPORTS_DIR}/features.log" 2>&1; then
@@ -179,7 +179,7 @@ run_security_tests() {
 
     if [ -d "${PROJECT_ROOT}/verification/claims/security" ]; then
         echo "Running security verification..."
-        if python -m pytest "${PROJECT_ROOT}/verification/claims/security/" \
+        if python3 -m pytest "${PROJECT_ROOT}/verification/claims/security/" \
             -v --tb=short \
             --junitxml="${REPORTS_DIR}/security.xml" \
             > "${REPORTS_DIR}/security.log" 2>&1; then
@@ -207,7 +207,7 @@ run_performance_tests() {
     if [ -d "${PROJECT_ROOT}/benchmarks/load-tests" ]; then
         echo "Running performance benchmarks..."
         # Run with reduced duration for CI
-        if python "${PROJECT_ROOT}/benchmarks/load-tests/read_only.py" \
+        if python3 "${PROJECT_ROOT}/benchmarks/load-tests/read_only.py" \
             --duration 30 \
             --output "${REPORTS_DIR}/perf-read-only.json" \
             > "${REPORTS_DIR}/perf-read-only.log" 2>&1; then
