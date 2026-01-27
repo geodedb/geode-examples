@@ -336,12 +336,12 @@ benchmark-bare-standard: ## Standard bare-metal benchmark (60s, 100 workers)
 		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
 		--output $(REPORTS_DIR)/bare_standard.json
 
-benchmark-bare-intensive: ## Intensive bare-metal benchmark (120s, 200 workers)
+benchmark-bare-intensive: ## Intensive bare-metal benchmark (120s, 200 workers, 5 clients)
 	@echo "Running intensive bare-metal benchmark..."
 	@echo "Target: $(GEODE_HOST)"
 	@mkdir -p $(REPORTS_DIR)
 	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
-		--clients cli \
+		--clients go,python,rust,zig,nodejs \
 		--workers 200 \
 		--duration 120 \
 		--batch-size 100 \
@@ -351,12 +351,12 @@ benchmark-bare-intensive: ## Intensive bare-metal benchmark (120s, 200 workers)
 		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
 		--output $(REPORTS_DIR)/bare_intensive.json
 
-benchmark-bare-multi: ## Multi-client bare-metal benchmark (all clients, 50 workers each)
+benchmark-bare-multi: ## Multi-client bare-metal benchmark (5 clients, 50 workers each)
 	@echo "Running multi-client bare-metal benchmark..."
 	@echo "Target: $(GEODE_HOST)"
 	@mkdir -p $(REPORTS_DIR)
 	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
-		--clients all \
+		--clients go,python,rust,zig,nodejs \
 		--workers 50 \
 		--duration 60 \
 		--batch-size 20 \
@@ -366,13 +366,13 @@ benchmark-bare-multi: ## Multi-client bare-metal benchmark (all clients, 50 work
 		--port $(lastword $(subst :, ,$(GEODE_HOST))) \
 		--output $(REPORTS_DIR)/bare_multi.json
 
-benchmark-bare-max: ## Maximum bare-metal stress test (300s, 500 workers)
+benchmark-bare-max: ## Maximum bare-metal stress test (300s, 500 workers, 5 clients)
 	@echo "Running maximum bare-metal stress test..."
 	@echo "Target: $(GEODE_HOST)"
 	@echo "Warning: This is a stress test - ensure server can handle load"
 	@mkdir -p $(REPORTS_DIR)
 	@$(PYTHON) benchmarks/load-tests/multi_client_benchmark.py \
-		--clients cli \
+		--clients go,python,rust,zig,nodejs \
 		--workers 500 \
 		--duration 300 \
 		--batch-size 100 \
