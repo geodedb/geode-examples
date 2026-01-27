@@ -147,6 +147,7 @@ def run_go_benchmark(host: str, port: int, workers: int, queries: int) -> Option
         "--port", str(port),
         "--workers", str(workers),
         "--queries", str(queries),
+        "--insecure",
         "--json"
     ]
 

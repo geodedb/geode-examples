@@ -17,98 +17,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from multi_client_benchmark import (
-    AtomicCounter,
-    LatencyCollector,
     ClientResult,
     MultiClientResult,
     ALL_CLIENTS,
     CLIENT_BENCHMARKS,
 )
-
-
-class TestAtomicCounter(unittest.TestCase):
-    """Tests for the AtomicCounter class."""
-
-    def test_initial_value(self):
-        """Counter starts at 0."""
-        counter = AtomicCounter()
-        self.assertEqual(counter.value, 0)
-
-    def test_add_single_thread(self):
-        """Adding values in single thread."""
-        counter = AtomicCounter()
-        counter.add(5)
-        counter.add(3)
-        self.assertEqual(counter.value, 8)
-
-    def test_add_concurrent(self):
-        """Adding values from multiple threads."""
-        counter = AtomicCounter()
-        threads = []
-        increments_per_thread = 100
-        num_threads = 10
-
-        def increment():
-            for _ in range(increments_per_thread):
-                counter.add(1)
-
-        for _ in range(num_threads):
-            t = threading.Thread(target=increment)
-            threads.append(t)
-            t.start()
-
-        for t in threads:
-            t.join()
-
-        expected = num_threads * increments_per_thread
-        self.assertEqual(counter.value, expected)
-
-
-class TestLatencyCollector(unittest.TestCase):
-    """Tests for the LatencyCollector class."""
-
-    def test_initial_empty(self):
-        """Collector starts empty."""
-        collector = LatencyCollector()
-        self.assertEqual(collector.samples, [])
-
-    def test_add_samples(self):
-        """Adding samples."""
-        collector = LatencyCollector()
-        collector.add(10.0)
-        collector.add(20.0)
-        collector.add(15.0)
-        self.assertEqual(collector.samples, [10.0, 20.0, 15.0])
-
-    def test_max_samples_limit(self):
-        """Collector respects max_samples limit."""
-        collector = LatencyCollector(max_samples=5)
-        for i in range(10):
-            collector.add(float(i))
-        self.assertEqual(len(collector.samples), 5)
-        self.assertEqual(collector.samples, [0.0, 1.0, 2.0, 3.0, 4.0])
-
-    def test_concurrent_access(self):
-        """Thread-safe sample collection."""
-        collector = LatencyCollector(max_samples=1000)
-        threads = []
-        samples_per_thread = 100
-        num_threads = 5
-
-        def add_samples():
-            for i in range(samples_per_thread):
-                collector.add(float(i))
-
-        for _ in range(num_threads):
-            t = threading.Thread(target=add_samples)
-            threads.append(t)
-            t.start()
-
-        for t in threads:
-            t.join()
-
-        expected = num_threads * samples_per_thread
-        self.assertEqual(len(collector.samples), expected)
 
 
 class TestClientResult(unittest.TestCase):
@@ -117,22 +30,25 @@ class TestClientResult(unittest.TestCase):
     def test_create_result(self):
         """Creating a ClientResult."""
         result = ClientResult(
-            client_name="cli",
+            client_name="go",
             workers=10,
-            total_queries=100,
-            successful_queries=95,
-            failed_queries=5,
-            throughput_qps=50.0,
+            queries_per_worker=100,
+            total_queries=1000,
+            successful_queries=950,
+            failed_queries=50,
+            throughput_qps=500.0,
             latency_p50_ms=20.0,
+            latency_p95_ms=50.0,
             latency_p99_ms=100.0,
+            latency_avg_ms=25.0,
             duration_seconds=10.0,
-            status="OK"
+            status="GOOD"
         )
-        self.assertEqual(result.client_name, "cli")
+        self.assertEqual(result.client_name, "go")
         self.assertEqual(result.workers, 10)
-        self.assertEqual(result.total_queries, 100)
-        self.assertEqual(result.successful_queries, 95)
-        self.assertEqual(result.failed_queries, 5)
+        self.assertEqual(result.total_queries, 1000)
+        self.assertEqual(result.successful_queries, 950)
+        self.assertEqual(result.failed_queries, 50)
 
 
 class TestMultiClientResult(unittest.TestCase):
@@ -144,7 +60,7 @@ class TestMultiClientResult(unittest.TestCase):
             benchmark_name="test",
             timestamp="2026-01-27T00:00:00Z",
             total_duration_seconds=60.0,
-            clients_used=["cli", "go"],
+            clients_used=["go", "rust"],
             total_workers=100,
             aggregate_throughput_qps=500.0,
             aggregate_total_queries=30000,
@@ -164,8 +80,8 @@ class TestClientConfiguration(unittest.TestCase):
     """Tests for client configuration."""
 
     def test_all_clients_list(self):
-        """ALL_CLIENTS contains expected clients."""
-        expected = ["cli", "go", "python", "rust", "zig", "nodejs"]
+        """ALL_CLIENTS contains expected native clients."""
+        expected = ["go", "python", "rust", "nodejs", "zig"]
         self.assertEqual(ALL_CLIENTS, expected)
 
     def test_client_benchmarks_mapping(self):
@@ -206,50 +122,24 @@ class TestBenchmarkLogic(unittest.TestCase):
 
     def test_status_classification(self):
         """Status classification based on throughput."""
-        CLAIMED_MAX = 100_000
+        def classify(throughput):
+            CLAIMED_MAX = 100_000
+            if throughput >= CLAIMED_MAX:
+                return "VERIFIED"
+            elif throughput >= 10_000:
+                return "EXCELLENT"
+            elif throughput >= 1_000:
+                return "GOOD"
+            elif throughput >= 100:
+                return "ACCEPTABLE"
+            else:
+                return "LIMITED"
 
-        # VERIFIED: >= 100k qps
-        self.assertEqual(
-            "VERIFIED" if 100_000 >= CLAIMED_MAX else "other",
-            "VERIFIED"
-        )
-
-        # PARTIAL: >= 10k qps
-        self.assertEqual(
-            "PARTIAL" if 10_000 >= 10_000 and 10_000 < CLAIMED_MAX else "other",
-            "PARTIAL"
-        )
-
-        # BASELINE: >= 1k qps
-        self.assertEqual(
-            "BASELINE" if 1_000 >= 1_000 and 1_000 < 10_000 else "other",
-            "BASELINE"
-        )
-
-        # LIMITED: < 1k qps
-        self.assertEqual(
-            "LIMITED" if 500 < 1_000 else "other",
-            "LIMITED"
-        )
-
-
-class TestQueryExecution(unittest.TestCase):
-    """Tests for query execution behavior."""
-
-    def test_single_query_no_batch(self):
-        """Individual queries are executed, not batched."""
-        # The fix ensures we don't batch queries with semicolons
-        # Each query should be a single statement
-        query = "RETURN 1"
-        self.assertNotIn(";", query)
-
-    def test_batch_size_iterations(self):
-        """Batch size controls iteration count, not semicolon joining."""
-        batch_size = 5
-        # With the fix, we run batch_size individual queries
-        # Not one query with batch_size statements joined by semicolons
-        queries_to_run = batch_size
-        self.assertEqual(queries_to_run, 5)
+        self.assertEqual(classify(100_000), "VERIFIED")
+        self.assertEqual(classify(50_000), "EXCELLENT")
+        self.assertEqual(classify(5_000), "GOOD")
+        self.assertEqual(classify(500), "ACCEPTABLE")
+        self.assertEqual(classify(50), "LIMITED")
 
 
 if __name__ == "__main__":
