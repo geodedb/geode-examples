@@ -2,40 +2,45 @@
 """
 Multi-Client High-Throughput Benchmark for Geode
 
-This benchmark runs multiple client implementations in parallel to achieve
-maximum throughput. Each client type uses subprocess-based execution to
-query the Geode server.
+This benchmark runs multiple NATIVE client implementations in parallel to achieve
+maximum throughput. Each client type uses its respective native QUIC client library
+with persistent connections for true high-throughput testing.
 
-Note: This benchmark uses subprocess calls to the geode CLI for all client types.
-For true native client benchmarks, use the actual client libraries from their
-respective repositories (geode-client-go, geode-client-rust, etc.).
+Supported Native Clients:
+  - Go: geode-client-go (database/sql driver with QUIC)
+  - Python: geode-client-python (async aioquic)
+  - Rust: geode-client-rust (tokio + quinn)
+  - Node.js: geode-client-nodejs (TypeScript QUIC)
+  - Zig: geode-client-zig (native QUIC)
 
-CANARY: REQ=REQ-PERF-MULTICLIENT-001; FEATURE="MultiClientBench"; ASPECT=Performance; STATUS=TESTED
+CANARY: REQ=REQ-PERF-MULTICLIENT-002; FEATURE="NativeMultiClientBench"; ASPECT=Performance; STATUS=TESTED
 
 Usage:
-    # Run with all available clients
-    python benchmarks/load-tests/multi_client_benchmark.py --clients all
+    # Run with all available native clients
+    python multi_client_benchmark.py --clients all --workers 10 --queries 1000
 
     # Run with specific clients
-    python benchmarks/load-tests/multi_client_benchmark.py --clients cli,go,python
+    python multi_client_benchmark.py --clients go,python,rust --workers 10 --queries 1000
 
-    # High-scale test with 100 workers per client
-    python benchmarks/load-tests/multi_client_benchmark.py --clients cli,go --workers 100 --duration 120
+    # High-scale test
+    python multi_client_benchmark.py --clients all --workers 100 --queries 10000
 """
 import argparse
 import json
 import os
 import shutil
-import statistics
 import subprocess
 import sys
-import threading
 import time
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+# Repository root (parent of geode-examples)
+REPO_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 @dataclass
@@ -43,12 +48,15 @@ class ClientResult:
     """Result from a single client benchmark."""
     client_name: str
     workers: int
+    queries_per_worker: int
     total_queries: int
     successful_queries: int
     failed_queries: int
     throughput_qps: float
     latency_p50_ms: float
+    latency_p95_ms: float
     latency_p99_ms: float
+    latency_avg_ms: float
     duration_seconds: float
     status: str
 
@@ -71,316 +79,443 @@ class MultiClientResult:
     status: str
 
 
-class AtomicCounter:
-    """Thread-safe counter."""
-    def __init__(self):
-        self._value = 0
-        self._lock = threading.Lock()
-
-    def add(self, n: int):
-        with self._lock:
-            self._value += n
-
-    @property
-    def value(self):
-        with self._lock:
-            return self._value
-
-
-class LatencyCollector:
-    """Thread-safe latency collector."""
-    def __init__(self, max_samples: int = 50000):
-        self._samples = []
-        self._lock = threading.Lock()
-        self._max_samples = max_samples
-
-    def add(self, latency_ms: float):
-        with self._lock:
-            if len(self._samples) < self._max_samples:
-                self._samples.append(latency_ms)
-
-    @property
-    def samples(self):
-        with self._lock:
-            return list(self._samples)
-
-
 # =============================================================================
-# Connectivity Check
+# Native Client Benchmark Runners
 # =============================================================================
 
-def check_connectivity(host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Tuple[bool, str]:
-    """
-    Check if we can connect to the Geode server.
-    Returns (success, message).
-    """
+def check_go_available() -> Tuple[bool, str]:
+    """Check if Go client benchmark is available."""
+    go_benchmark = REPO_ROOT / "geode-client-go" / "cmd" / "benchmark" / "main.go"
+    if not go_benchmark.exists():
+        return False, f"Go benchmark not found at {go_benchmark}"
+    if not shutil.which("go"):
+        return False, "Go compiler not found in PATH"
+    return True, str(go_benchmark.parent)
+
+
+def check_rust_available() -> Tuple[bool, str]:
+    """Check if Rust client benchmark is available."""
+    rust_benchmark = REPO_ROOT / "geode-client-rust" / "examples" / "benchmark.rs"
+    if not rust_benchmark.exists():
+        return False, f"Rust benchmark not found at {rust_benchmark}"
+    if not shutil.which("cargo"):
+        return False, "Cargo not found in PATH"
+    return True, str(REPO_ROOT / "geode-client-rust")
+
+
+def check_nodejs_available() -> Tuple[bool, str]:
+    """Check if Node.js client benchmark is available."""
+    nodejs_benchmark = REPO_ROOT / "geode-client-nodejs" / "benchmarks" / "benchmark.ts"
+    if not nodejs_benchmark.exists():
+        return False, f"Node.js benchmark not found at {nodejs_benchmark}"
+    if not shutil.which("npx"):
+        return False, "npx not found in PATH"
+    return True, str(REPO_ROOT / "geode-client-nodejs")
+
+
+def check_python_available() -> Tuple[bool, str]:
+    """Check if Python native client benchmark is available."""
+    python_benchmark = REPO_ROOT / "geode-client-python" / "benchmarks" / "benchmark.py"
+    python_venv = REPO_ROOT / "geode-client-python" / ".venv" / "bin" / "python"
+    if not python_benchmark.exists():
+        return False, f"Python benchmark not found at {python_benchmark}"
+    if not python_venv.exists():
+        return False, f"Python venv not found at {python_venv}"
+    return True, str(REPO_ROOT / "geode-client-python")
+
+
+def check_zig_available() -> Tuple[bool, str]:
+    """Check if Zig client benchmark is available."""
+    zig_benchmark = REPO_ROOT / "geode-client-zig" / "benchmark.zig"
+    if not zig_benchmark.exists():
+        return False, f"Zig benchmark not found at {zig_benchmark}"
+    if not shutil.which("zig"):
+        return False, "Zig compiler not found in PATH"
+    return True, str(REPO_ROOT / "geode-client-zig")
+
+
+def run_go_benchmark(host: str, port: int, workers: int, queries: int) -> Optional[ClientResult]:
+    """Run Go native client benchmark."""
+    available, path = check_go_available()
+    if not available:
+        print(f"  Go client: {path}")
+        return None
+
+    cmd = [
+        "go", "run", "./cmd/benchmark",
+        "--host", host,
+        "--port", str(port),
+        "--workers", str(workers),
+        "--queries", str(queries),
+        "--json"
+    ]
+
     try:
-        if use_docker:
-            cmd = [
-                "docker", "compose", "exec", "-T", "geode",
-                "geode", "query", "--server", "localhost:3141", "--insecure",
-                "RETURN 1"
-            ]
-        else:
-            cmd = [
-                geode_path, "query", "--server", f"{host}:{port}", "--insecure",
-                "RETURN 1"
-            ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10.0)
-
-        if result.returncode == 0:
-            return True, "Connected successfully"
-        else:
-            return False, f"Connection failed: {result.stderr.strip()}"
-
-    except subprocess.TimeoutExpired:
-        return False, "Connection timed out"
-    except FileNotFoundError as e:
-        return False, f"Command not found: {e}"
-    except Exception as e:
-        return False, f"Error: {e}"
-
-
-# =============================================================================
-# Base Worker Function (used by all client types)
-# =============================================================================
-
-def base_worker(
-    worker_id: int,
-    stop_event: threading.Event,
-    successful: AtomicCounter,
-    failed: AtomicCounter,
-    latencies: LatencyCollector,
-    batch_size: int,
-    host: str,
-    port: int,
-    use_docker: bool,
-    geode_path: str = "geode",
-    client_label: str = "cli"
-):
-    """
-    Base worker using geode query command.
-    All client types use this same underlying mechanism.
-    """
-    queries = ";".join(["RETURN 1" for _ in range(batch_size)])
-
-    while not stop_event.is_set():
-        start = time.perf_counter()
-        try:
-            if use_docker:
-                cmd = [
-                    "docker", "compose", "exec", "-T", "geode",
-                    "geode", "query", "--server", "localhost:3141", "--insecure",
-                    queries
-                ]
-            else:
-                cmd = [
-                    geode_path, "query", "--server", f"{host}:{port}", "--insecure",
-                    queries
-                ]
-
-            result = subprocess.run(cmd, capture_output=True, timeout=30.0)
-            latency = (time.perf_counter() - start) * 1000
-
-            if result.returncode == 0:
-                successful.add(batch_size)
-            else:
-                failed.add(batch_size)
-
-            latencies.add(latency / batch_size)
-
-        except Exception:
-            failed.add(batch_size)
-
-
-# =============================================================================
-# Generic Client Benchmark Runner
-# =============================================================================
-
-def run_client_benchmark(
-    client_name: str,
-    workers: int,
-    duration: int,
-    batch_size: int,
-    host: str,
-    port: int,
-    use_docker: bool,
-    geode_path: str = "geode"
-) -> ClientResult:
-    """
-    Run a benchmark for any client type.
-    All clients use the same underlying subprocess mechanism.
-    """
-    stop_event = threading.Event()
-    successful = AtomicCounter()
-    failed = AtomicCounter()
-    latencies = LatencyCollector()
-
-    threads = []
-    for i in range(workers):
-        t = threading.Thread(
-            target=base_worker,
-            args=(i, stop_event, successful, failed, latencies, batch_size, host, port, use_docker, geode_path, client_name),
-            daemon=True
+        result = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT / "geode-client-go"),
+            capture_output=True,
+            text=True,
+            timeout=600
         )
-        t.start()
-        threads.append(t)
 
-    start = time.monotonic()
-    time.sleep(duration)
-    stop_event.set()
+        if result.returncode != 0:
+            print(f"  Go benchmark failed: {result.stderr}")
+            return None
 
-    for t in threads:
-        t.join(timeout=2.0)
+        data = json.loads(result.stdout.strip())
+        return ClientResult(
+            client_name="go",
+            workers=data.get("workers", workers),
+            queries_per_worker=data.get("queries_per_worker", queries),
+            total_queries=data.get("total_queries", 0),
+            successful_queries=data.get("successful_queries", 0),
+            failed_queries=data.get("failed_queries", 0),
+            throughput_qps=data.get("throughput_qps", 0),
+            latency_p50_ms=data.get("latency_p50_ms", 0),
+            latency_p95_ms=data.get("latency_p95_ms", 0),
+            latency_p99_ms=data.get("latency_p99_ms", 0),
+            latency_avg_ms=data.get("latency_avg_ms", 0),
+            duration_seconds=data.get("duration_seconds", 0),
+            status=data.get("status", "UNKNOWN")
+        )
+    except subprocess.TimeoutExpired:
+        print("  Go benchmark timed out")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"  Go benchmark JSON parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"  Go benchmark error: {e}")
+        return None
 
-    elapsed = time.monotonic() - start
-    total_successful = successful.value
-    throughput = total_successful / elapsed if elapsed > 0 else 0
 
-    samples = latencies.samples
-    if samples:
-        sorted_samples = sorted(samples)
-        p50 = sorted_samples[len(sorted_samples) // 2]
-        p99_idx = min(int(len(sorted_samples) * 0.99), len(sorted_samples) - 1)
-        p99 = sorted_samples[p99_idx]
-    else:
-        p50 = p99 = 0
+def run_rust_benchmark(host: str, port: int, workers: int, queries: int) -> Optional[ClientResult]:
+    """Run Rust native client benchmark."""
+    available, path = check_rust_available()
+    if not available:
+        print(f"  Rust client: {path}")
+        return None
 
-    return ClientResult(
-        client_name=client_name,
-        workers=workers,
-        total_queries=total_successful + failed.value,
-        successful_queries=total_successful,
-        failed_queries=failed.value,
-        throughput_qps=throughput,
-        latency_p50_ms=p50,
-        latency_p99_ms=p99,
-        duration_seconds=elapsed,
-        status="OK"
-    )
+    cmd = [
+        "cargo", "run", "--release", "--example", "benchmark", "--",
+        "--host", host,
+        "--port", str(port),
+        "--workers", str(workers),
+        "--queries", str(queries),
+        "--json"
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT / "geode-client-rust"),
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+
+        # Show any errors from stderr (excluding cargo build output)
+        if result.stderr:
+            # Filter out cargo build lines, show actual errors
+            error_lines = [l for l in result.stderr.split('\n')
+                          if l.strip() and not l.strip().startswith(('Compiling', 'Finished', 'Running', 'Downloaded', 'Downloading'))]
+            if error_lines:
+                print(f"  Rust stderr: {'; '.join(error_lines[:3])}")
+
+        if result.returncode != 0:
+            print(f"  Rust benchmark failed (exit code {result.returncode})")
+            return None
+
+        if not result.stdout.strip():
+            print("  Rust benchmark produced no output")
+            return None
+
+        # Rust cargo outputs build info to stderr, JSON to stdout
+        data = json.loads(result.stdout.strip())
+        return ClientResult(
+            client_name="rust",
+            workers=data.get("workers", workers),
+            queries_per_worker=data.get("queries_per_worker", queries),
+            total_queries=data.get("total_queries", 0),
+            successful_queries=data.get("successful_queries", 0),
+            failed_queries=data.get("failed_queries", 0),
+            throughput_qps=data.get("throughput_qps", 0),
+            latency_p50_ms=data.get("latency_p50_ms", 0),
+            latency_p95_ms=data.get("latency_p95_ms", 0),
+            latency_p99_ms=data.get("latency_p99_ms", 0),
+            latency_avg_ms=data.get("latency_avg_ms", 0),
+            duration_seconds=data.get("duration_seconds", 0),
+            status=data.get("status", "UNKNOWN")
+        )
+    except subprocess.TimeoutExpired:
+        print("  Rust benchmark timed out")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"  Rust benchmark JSON parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"  Rust benchmark error: {e}")
+        return None
+
+
+def run_nodejs_benchmark(host: str, port: int, workers: int, queries: int) -> Optional[ClientResult]:
+    """Run Node.js native client benchmark."""
+    available, path = check_nodejs_available()
+    if not available:
+        print(f"  Node.js client: {path}")
+        return None
+
+    cmd = [
+        "npx", "tsx", "benchmarks/benchmark.ts",
+        "--host", host,
+        "--port", str(port),
+        "--workers", str(workers),
+        "--queries", str(queries),
+        "--json"
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT / "geode-client-nodejs"),
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+
+        if result.returncode != 0:
+            print(f"  Node.js benchmark failed: {result.stderr}")
+            return None
+
+        data = json.loads(result.stdout.strip())
+        return ClientResult(
+            client_name="nodejs",
+            workers=data.get("workers", workers),
+            queries_per_worker=data.get("queries_per_worker", queries),
+            total_queries=data.get("total_queries", 0),
+            successful_queries=data.get("successful_queries", 0),
+            failed_queries=data.get("failed_queries", 0),
+            throughput_qps=data.get("throughput_qps", 0),
+            latency_p50_ms=data.get("latency_p50_ms", 0),
+            latency_p95_ms=data.get("latency_p95_ms", 0),
+            latency_p99_ms=data.get("latency_p99_ms", 0),
+            latency_avg_ms=data.get("latency_avg_ms", 0),
+            duration_seconds=data.get("duration_seconds", 0),
+            status=data.get("status", "UNKNOWN")
+        )
+    except subprocess.TimeoutExpired:
+        print("  Node.js benchmark timed out")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"  Node.js benchmark JSON parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"  Node.js benchmark error: {e}")
+        return None
+
+
+def run_python_benchmark(host: str, port: int, workers: int, queries: int) -> Optional[ClientResult]:
+    """Run Python native client benchmark."""
+    available, path = check_python_available()
+    if not available:
+        print(f"  Python client: {path}")
+        return None
+
+    python_dir = REPO_ROOT / "geode-client-python"
+    python_venv = python_dir / ".venv" / "bin" / "python"
+
+    cmd = [
+        str(python_venv), "benchmarks/benchmark.py",
+        "--host", host,
+        "--port", str(port),
+        "--workers", str(workers),
+        "--queries", str(queries),
+        "--json"
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(python_dir),
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+
+        if result.returncode != 0:
+            print(f"  Python benchmark failed: {result.stderr}")
+            return None
+
+        data = json.loads(result.stdout.strip())
+        return ClientResult(
+            client_name="python",
+            workers=data.get("workers", workers),
+            queries_per_worker=data.get("queries_per_worker", queries),
+            total_queries=data.get("total_queries", 0),
+            successful_queries=data.get("successful_queries", 0),
+            failed_queries=data.get("failed_queries", 0),
+            throughput_qps=data.get("throughput_qps", 0),
+            latency_p50_ms=data.get("latency_p50_ms", 0),
+            latency_p95_ms=data.get("latency_p95_ms", 0),
+            latency_p99_ms=data.get("latency_p99_ms", 0),
+            latency_avg_ms=data.get("latency_avg_ms", 0),
+            duration_seconds=data.get("duration_seconds", 0),
+            status=data.get("status", "UNKNOWN")
+        )
+    except subprocess.TimeoutExpired:
+        print("  Python benchmark timed out")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"  Python benchmark JSON parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"  Python benchmark error: {e}")
+        return None
+
+
+def run_zig_benchmark(host: str, port: int, workers: int, queries: int) -> Optional[ClientResult]:
+    """Run Zig native client benchmark."""
+    available, path = check_zig_available()
+    if not available:
+        print(f"  Zig client: {path}")
+        return None
+
+    zig_dir = REPO_ROOT / "geode-client-zig"
+    benchmark_binary = zig_dir / "zig-out" / "bin" / "benchmark"
+
+    # Only build if binary doesn't exist
+    if not benchmark_binary.exists():
+        build_cmd = ["zig", "build", "benchmark"]
+        try:
+            build_result = subprocess.run(
+                build_cmd,
+                cwd=str(zig_dir),
+                capture_output=True,
+                text=True,
+                timeout=300  # Increased timeout for initial build
+            )
+            if build_result.returncode != 0:
+                print(f"  Zig build failed: {build_result.stderr}")
+                return None
+        except subprocess.TimeoutExpired:
+            print(f"  Zig build error: Command '{''.join(build_cmd)}' timed out after 120 seconds")
+            return None
+        except Exception as e:
+            print(f"  Zig build error: {e}")
+            return None
+
+    # Run the benchmark
+    cmd = [
+        str(benchmark_binary),
+        "--host", host,
+        "--port", str(port),
+        "--workers", str(workers),
+        "--queries", str(queries),
+        "--json"
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+
+        if result.returncode != 0:
+            print(f"  Zig benchmark failed: {result.stderr}")
+            return None
+
+        data = json.loads(result.stdout.strip())
+        return ClientResult(
+            client_name="zig",
+            workers=data.get("workers", workers),
+            queries_per_worker=data.get("queries_per_worker", queries),
+            total_queries=data.get("total_queries", 0),
+            successful_queries=data.get("successful_queries", 0),
+            failed_queries=data.get("failed_queries", 0),
+            throughput_qps=data.get("throughput_qps", 0),
+            latency_p50_ms=data.get("latency_p50_ms", 0),
+            latency_p95_ms=data.get("latency_p95_ms", 0),
+            latency_p99_ms=data.get("latency_p99_ms", 0),
+            latency_avg_ms=data.get("latency_avg_ms", 0),
+            duration_seconds=data.get("duration_seconds", 0),
+            status=data.get("status", "UNKNOWN")
+        )
+    except subprocess.TimeoutExpired:
+        print("  Zig benchmark timed out")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"  Zig benchmark JSON parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"  Zig benchmark error: {e}")
+        return None
 
 
 # =============================================================================
-# Client-Specific Wrappers (for future native implementation)
+# Client Registry
 # =============================================================================
 
-def run_cli_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> ClientResult:
-    """CLI client benchmark - uses geode CLI directly."""
-    return run_client_benchmark("cli", workers, duration, batch_size, host, port, use_docker, geode_path)
+CLIENT_BENCHMARKS = {
+    "go": run_go_benchmark,
+    "python": run_python_benchmark,
+    "rust": run_rust_benchmark,
+    "nodejs": run_nodejs_benchmark,
+    "node": run_nodejs_benchmark,  # Alias
+    "zig": run_zig_benchmark,
+}
+
+ALL_CLIENTS = ["go", "python", "rust", "nodejs", "zig"]
 
 
-def run_go_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
-    """
-    Go client benchmark.
-
-    Note: Currently uses subprocess. For native Go client benchmarks,
-    use the geode-client-go repository directly.
-    """
-    return run_client_benchmark("go", workers, duration, batch_size, host, port, use_docker, geode_path)
-
-
-def run_python_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
-    """
-    Python client benchmark.
-
-    Note: Currently uses subprocess. For native Python client benchmarks,
-    use the geode-client-python repository directly.
-    """
-    return run_client_benchmark("python", workers, duration, batch_size, host, port, use_docker, geode_path)
-
-
-def run_rust_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
-    """
-    Rust client benchmark.
-
-    Note: Currently uses subprocess. For native Rust client benchmarks,
-    use the geode-client-rust repository directly.
-    """
-    return run_client_benchmark("rust", workers, duration, batch_size, host, port, use_docker, geode_path)
-
-
-def run_zig_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
-    """
-    Zig client benchmark.
-
-    Note: Currently uses subprocess. For native Zig client benchmarks,
-    use the geode-client-zig repository directly.
-    """
-    return run_client_benchmark("zig", workers, duration, batch_size, host, port, use_docker, geode_path)
-
-
-def run_nodejs_benchmark(workers: int, duration: int, batch_size: int, host: str, port: int, use_docker: bool, geode_path: str = "geode") -> Optional[ClientResult]:
-    """
-    Node.js client benchmark.
-
-    Note: Currently uses subprocess. For native Node.js client benchmarks,
-    use the geode-client-nodejs repository directly.
-    """
-    return run_client_benchmark("nodejs", workers, duration, batch_size, host, port, use_docker, geode_path)
+def check_client_availability() -> Dict[str, Tuple[bool, str]]:
+    """Check which clients are available."""
+    checks = {
+        "go": check_go_available,
+        "python": check_python_available,
+        "rust": check_rust_available,
+        "nodejs": check_nodejs_available,
+        "zig": check_zig_available,
+    }
+    return {name: check() for name, check in checks.items()}
 
 
 # =============================================================================
 # Multi-Client Orchestrator
 # =============================================================================
 
-# Map client names to their benchmark functions
-CLIENT_BENCHMARKS = {
-    "cli": run_cli_benchmark,
-    "go": run_go_benchmark,
-    "python": run_python_benchmark,
-    "rust": run_rust_benchmark,
-    "zig": run_zig_benchmark,
-    "nodejs": run_nodejs_benchmark,
-    "node": run_nodejs_benchmark,  # Alias
-}
-
-ALL_CLIENTS = ["cli", "go", "python", "rust", "zig", "nodejs"]
-
-
 def run_multi_client_benchmark(
     clients: List[str],
-    workers_per_client: int,
-    duration: int,
-    batch_size: int,
+    workers: int,
+    queries: int,
     host: str,
     port: int,
-    use_docker: bool,
     output_dir: Path,
-    geode_path: str = "geode",
-    skip_connectivity_check: bool = False
 ) -> MultiClientResult:
     """
-    Run benchmarks with multiple clients in parallel.
+    Run benchmarks with multiple native clients in parallel.
     """
     print(f"\n{'='*70}")
-    print("MULTI-CLIENT HIGH-THROUGHPUT BENCHMARK")
+    print("MULTI-CLIENT NATIVE BENCHMARK")
     print(f"{'='*70}")
     print(f"Clients: {', '.join(clients)}")
-    print(f"Workers per client: {workers_per_client}")
-    print(f"Duration: {duration}s")
-    print(f"Batch size: {batch_size}")
+    print(f"Workers per client: {workers}")
+    print(f"Queries per worker: {queries}")
+    print(f"Total queries per client: {workers * queries:,}")
     print(f"Host: {host}:{port}")
-    print(f"Mode: {'Docker' if use_docker else 'Bare-metal'}")
-    if not use_docker:
-        print(f"Geode path: {geode_path}")
     print()
 
-    # Connectivity check
-    if not skip_connectivity_check:
-        print("Checking connectivity...")
-        connected, message = check_connectivity(host, port, use_docker, geode_path)
-        if not connected:
-            print(f"  FAILED: {message}")
-            print()
-            print("For bare-metal mode, ensure:")
-            print("  1. Geode server is running on the target host")
-            print("  2. The geode CLI binary is in PATH or specified via --geode-path")
-            print("  3. The server is accessible at the specified host:port")
-            print()
-            raise RuntimeError(f"Connectivity check failed: {message}")
-        print(f"  OK: {message}")
-        print()
+    # Check client availability
+    print("Checking client availability...")
+    availability = check_client_availability()
+    for name in clients:
+        if name in availability:
+            available, msg = availability[name]
+            status = "OK" if available else f"NOT AVAILABLE: {msg}"
+            print(f"  {name:8}: {status}")
+    print()
 
     output_dir.mkdir(parents=True, exist_ok=True)
     client_results = []
@@ -388,19 +523,24 @@ def run_multi_client_benchmark(
 
     start_time = time.monotonic()
 
+    print("Running benchmarks...")
     with ThreadPoolExecutor(max_workers=len(clients)) as executor:
         for client in clients:
             if client not in CLIENT_BENCHMARKS:
                 print(f"  Unknown client: {client}, skipping")
                 continue
 
+            # Check if available
+            if client in availability:
+                available, _ = availability[client]
+                if not available:
+                    print(f"  Skipping {client} (not available)")
+                    continue
+
             benchmark_fn = CLIENT_BENCHMARKS[client]
-            future = executor.submit(
-                benchmark_fn,
-                workers_per_client, duration, batch_size, host, port, use_docker, geode_path
-            )
+            future = executor.submit(benchmark_fn, host, port, workers, queries)
             futures[future] = client
-            print(f"  Started {client} benchmark with {workers_per_client} workers")
+            print(f"  Started {client} benchmark")
 
         # Collect results
         for future in as_completed(futures):
@@ -409,7 +549,9 @@ def run_multi_client_benchmark(
                 result = future.result()
                 if result:
                     client_results.append(result)
-                    print(f"  {client_name}: {result.successful_queries:,} queries, {result.throughput_qps:,.0f} qps")
+                    print(f"  {client_name}: {result.successful_queries:,} queries, {result.throughput_qps:,.0f} qps, p50={result.latency_p50_ms:.1f}ms")
+                else:
+                    print(f"  {client_name}: FAILED")
             except Exception as e:
                 print(f"  {client_name} failed: {e}")
 
@@ -420,22 +562,24 @@ def run_multi_client_benchmark(
     aggregate_successful = sum(r.successful_queries for r in client_results)
     aggregate_failed = sum(r.failed_queries for r in client_results)
     aggregate_total = aggregate_successful + aggregate_failed
-    total_workers = len(client_results) * workers_per_client
+    total_workers = sum(r.workers for r in client_results)
 
     CLAIMED_MAX = 100_000
-    achieved_pct = (aggregate_throughput / CLAIMED_MAX) * 100
+    achieved_pct = (aggregate_throughput / CLAIMED_MAX) * 100 if CLAIMED_MAX > 0 else 0
 
     if aggregate_throughput >= CLAIMED_MAX:
         status = "VERIFIED"
     elif aggregate_throughput >= 10_000:
-        status = "PARTIAL"
+        status = "EXCELLENT"
     elif aggregate_throughput >= 1_000:
-        status = "BASELINE"
+        status = "GOOD"
+    elif aggregate_throughput >= 100:
+        status = "ACCEPTABLE"
     else:
         status = "LIMITED"
 
     return MultiClientResult(
-        benchmark_name="multi_client_high_throughput",
+        benchmark_name="multi_client_native_benchmark",
         timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         total_duration_seconds=total_duration,
         clients_used=[r.client_name for r in client_results],
@@ -454,7 +598,7 @@ def run_multi_client_benchmark(
 def print_result(result: MultiClientResult):
     """Print multi-client benchmark results."""
     print(f"\n{'='*70}")
-    print("MULTI-CLIENT BENCHMARK RESULTS")
+    print("MULTI-CLIENT NATIVE BENCHMARK RESULTS")
     print(f"{'='*70}")
     print(f"Timestamp: {result.timestamp}")
     print(f"Duration: {result.total_duration_seconds:.2f}s")
@@ -462,8 +606,10 @@ def print_result(result: MultiClientResult):
     print(f"Total Workers: {result.total_workers}")
     print()
     print("PER-CLIENT RESULTS:")
+    print(f"  {'Client':8} | {'Queries':>12} | {'Throughput':>12} | {'p50':>8} | {'p95':>8} | {'p99':>8} | {'Status':>10}")
+    print(f"  {'-'*8} | {'-'*12} | {'-'*12} | {'-'*8} | {'-'*8} | {'-'*8} | {'-'*10}")
     for cr in result.client_results:
-        print(f"  {cr['client_name']:8} | {cr['successful_queries']:>10,} queries | {cr['throughput_qps']:>10,.0f} qps | p50={cr['latency_p50_ms']:.1f}ms p99={cr['latency_p99_ms']:.1f}ms")
+        print(f"  {cr['client_name']:8} | {cr['successful_queries']:>12,} | {cr['throughput_qps']:>10,.0f} qps | {cr['latency_p50_ms']:>6.1f}ms | {cr['latency_p95_ms']:>6.1f}ms | {cr['latency_p99_ms']:>6.1f}ms | {cr['status']:>10}")
     print()
     print("AGGREGATE:")
     print(f"  Total queries:    {result.aggregate_total_queries:,}")
@@ -480,59 +626,45 @@ def print_result(result: MultiClientResult):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Multi-client high-throughput benchmark for Geode",
+        description="Multi-client native benchmark for Geode",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Available clients:
-  cli     - Geode CLI (baseline)
-  go      - Go client
-  python  - Python client
-  rust    - Rust client
-  zig     - Zig client
-  nodejs  - Node.js client
+Available native clients:
+  go      - Go client (geode-client-go)
+  python  - Python client (geode-client-python)
+  rust    - Rust client (geode-client-rust)
+  nodejs  - Node.js client (geode-client-nodejs)
+  zig     - Zig client (geode-client-zig)
   all     - All available clients
 
-Modes:
-  Docker (default) - Uses 'docker compose exec' to run queries inside container
-  Bare-metal       - Uses local geode CLI binary directly (--no-docker)
-
 Examples:
-  # Docker mode (default) - queries run inside container
-  python multi_client_benchmark.py --clients cli --workers 50
+  # Run with all available clients
+  python multi_client_benchmark.py --clients all --workers 10 --queries 1000
 
-  # Bare-metal mode - direct connection to local/remote server
-  python multi_client_benchmark.py --clients all --workers 100 --no-docker
+  # Run with specific clients
+  python multi_client_benchmark.py --clients go,rust --workers 20 --queries 5000
 
-  # Bare-metal with custom geode binary path
-  python multi_client_benchmark.py --no-docker --geode-path /opt/geode/bin/geode
-
-  # Connect to remote server
-  python multi_client_benchmark.py --no-docker --host 192.168.1.100 --port 3141
+  # High-scale test
+  python multi_client_benchmark.py --clients all --workers 100 --queries 10000
         """
     )
     parser.add_argument(
         "--clients", "-c",
         type=str,
-        default="cli",
-        help="Comma-separated list of clients or 'all' (default: cli)"
+        default="all",
+        help="Comma-separated list of clients or 'all' (default: all)"
     )
     parser.add_argument(
         "--workers", "-w",
         type=int,
-        default=50,
-        help="Workers per client (default: 50)"
-    )
-    parser.add_argument(
-        "--duration", "-d",
-        type=int,
-        default=60,
-        help="Duration in seconds (default: 60)"
-    )
-    parser.add_argument(
-        "--batch-size", "-b",
-        type=int,
         default=10,
-        help="Batch size for queries (default: 10)"
+        help="Workers (concurrent connections) per client (default: 10)"
+    )
+    parser.add_argument(
+        "--queries", "-q",
+        type=int,
+        default=1000,
+        help="Queries per worker (default: 1000)"
     )
     parser.add_argument(
         "--host",
@@ -555,23 +687,7 @@ Examples:
         "--output-dir",
         type=str,
         default="reports/multi_client",
-        help="Output directory for per-client results"
-    )
-    parser.add_argument(
-        "--no-docker",
-        action="store_true",
-        help="Bare-metal mode: use local geode CLI instead of docker compose"
-    )
-    parser.add_argument(
-        "--geode-path",
-        type=str,
-        default="geode",
-        help="Path to geode CLI binary for bare-metal mode (default: geode)"
-    )
-    parser.add_argument(
-        "--skip-connectivity-check",
-        action="store_true",
-        help="Skip the initial connectivity check"
+        help="Output directory for results"
     )
 
     args = parser.parse_args()
@@ -583,22 +699,14 @@ Examples:
         clients = [c.strip() for c in args.clients.split(",")]
 
     # Run benchmark
-    try:
-        result = run_multi_client_benchmark(
-            clients=clients,
-            workers_per_client=args.workers,
-            duration=args.duration,
-            batch_size=args.batch_size,
-            host=args.host,
-            port=args.port,
-            use_docker=not args.no_docker,
-            output_dir=Path(args.output_dir),
-            geode_path=args.geode_path,
-            skip_connectivity_check=args.skip_connectivity_check
-        )
-    except RuntimeError as e:
-        print(f"\nBenchmark failed: {e}")
-        sys.exit(1)
+    result = run_multi_client_benchmark(
+        clients=clients,
+        workers=args.workers,
+        queries=args.queries,
+        host=args.host,
+        port=args.port,
+        output_dir=Path(args.output_dir),
+    )
 
     # Print results
     print_result(result)
@@ -611,7 +719,11 @@ Examples:
             json.dump(asdict(result), f, indent=2)
         print(f"\nResults saved to: {output_path}")
 
-    sys.exit(0)
+    # Exit with appropriate code (0 for ACCEPTABLE or better, 1 for LIMITED/FAILED)
+    if result.status in ["VERIFIED", "EXCELLENT", "GOOD", "ACCEPTABLE"]:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

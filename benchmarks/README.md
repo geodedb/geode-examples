@@ -26,7 +26,9 @@ benchmarks/
 │   ├── read_write.py            # Mixed read/write benchmark
 │   ├── write_heavy.py           # Write-heavy benchmark
 │   ├── concurrent_connections.py # Connection scaling benchmark
-│   └── vector_distance.py       # Vector operation latency
+│   ├── vector_distance.py       # Vector operation latency
+│   ├── multi_client_benchmark.py # Multi-client native benchmark orchestrator
+│   └── native_client_benchmark.py # Python native client benchmark
 ├── data-generators/             # Test data generators
 │   ├── social_graph.py          # Social network data
 │   ├── knowledge_graph.py       # Knowledge graph data
@@ -42,6 +44,37 @@ pip install -r requirements.txt
 ```
 
 ## Running Benchmarks
+
+### Native Client Benchmarks (Recommended)
+
+For true high-throughput benchmarks using persistent QUIC connections, use the native client benchmarks. These use actual native client libraries for each language rather than spawning subprocesses.
+
+```bash
+# Run all available native clients
+python load-tests/multi_client_benchmark.py --clients all --workers 10 --queries 1000
+
+# Run specific clients
+python load-tests/multi_client_benchmark.py --clients go,rust --workers 20 --queries 5000
+
+# Python only (native aioquic client)
+python load-tests/native_client_benchmark.py --workers 10 --queries 1000
+```
+
+**Available Native Clients:**
+
+| Client | Location | Direct Run Command |
+|--------|----------|-------------------|
+| Go | `geode-client-go/cmd/benchmark/` | `go run ./cmd/benchmark --workers 10 --queries 1000 --json` |
+| Python | `load-tests/native_client_benchmark.py` | `python native_client_benchmark.py --workers 10 --queries 1000 --json` |
+| Rust | `geode-client-rust/examples/benchmark.rs` | `cargo run --release --example benchmark -- --workers 10 --queries 1000 --json` |
+| Node.js | `geode-client-nodejs/benchmarks/benchmark.ts` | `npx tsx benchmarks/benchmark.ts --workers 10 --queries 1000 --json` |
+| Zig | `geode-client-zig/benchmark.zig` | `zig build benchmark -- --workers 10 --queries 1000 --json` |
+
+All native benchmarks:
+- Use persistent QUIC connections (no subprocess overhead)
+- Support `--json` flag for machine-readable output
+- Calculate p50, p95, p99, avg latency and throughput QPS
+- Use consistent status thresholds: EXCELLENT (≥10k qps), GOOD (≥1k), ACCEPTABLE (≥100), LIMITED (<100)
 
 ### Quick Smoke Test (10 seconds)
 
@@ -228,8 +261,9 @@ make benchmark-report
 
 - "Up to" claims represent best-case scenarios with optimal hardware
 - CI/CD benchmarks use shorter durations and may show lower numbers
-- Shell subprocess overhead significantly impacts measured throughput
-- For true throughput measurement, use native client libraries or server-side profiling
+- **Shell subprocess benchmarks** (`read_only.py`, etc.) have significant overhead (~50ms/query)
+- **Native client benchmarks** (`multi_client_benchmark.py`) use persistent QUIC connections for true throughput
+- For accurate throughput measurement, always use native client benchmarks
 - Compare results across consistent hardware configurations
 
 ## CANARY Markers
