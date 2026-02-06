@@ -12,7 +12,7 @@
 services:
   # Geode Database Server
   geode:
-    image: registry.gitlab.com/devnw/codepros/geode/geode:latest
+    image: geodedb/geode:latest
     container_name: geode-server
     ports:
       - "3141:3141"   # QUIC server port

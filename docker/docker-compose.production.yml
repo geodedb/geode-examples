@@ -9,7 +9,7 @@
 
 services:
   geode:
-    image: registry.gitlab.com/devnw/codepros/geode/geode:latest
+    image: geodedb/geode:latest
     container_name: geode-production
     ports:
       - "3141:3141"   # QUIC server

@@ -133,7 +133,7 @@ def generate_report(results_dir: Path, docs_dir: Path) -> Dict[str, Any]:
     report = {
         "report_version": "1.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "geode_version": "0.18.0+",
+        "geode_version": "0.1.4+",
 
         "summary": {
             "overall_status": "UNKNOWN",

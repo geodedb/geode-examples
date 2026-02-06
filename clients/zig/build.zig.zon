@@ -1,0 +1,16 @@
+.{
+    .name = .geode_zig_examples,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "examples",
+    },
+    .dependencies = .{
+        .geode_client = .{
+            .url = "git+https://gitlab.com/devnw/codepros/geode/geode-client-zig.git#9a2a224249f6d948f91b9ee9889ae2864cc795fd",
+            .hash = "geode_client_zig-0.1.0-8ysbV9gTAQA2AV4KArQZCF50pziBVtsNJ189Gjzczq4z",
+        },
+    },
+}

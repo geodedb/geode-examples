@@ -2,7 +2,7 @@
 # Install with: pip install -r requirements.txt
 
 # Geode Python client (async with aioquic)
-geode-client>=0.18.0
+geode-client>=0.1.4
 
 # Async support
 asyncio>=3.4.3

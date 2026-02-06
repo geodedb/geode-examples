@@ -3,7 +3,7 @@ name: geode
 description: Enterprise-ready graph database with 100% ISO/IEC 39075:2024 GQL compliance
 type: application
 version: 0.1.0
-appVersion: "0.18.0"
+appVersion: "0.1.4"
 home: https://geodedb.com
 sources:
   - https://gitlab.com/devnw/codepros/geode

@@ -14,7 +14,7 @@
 replicaCount: 5
 
 image:
-  repository: registry.gitlab.com/devnw/codepros/geode/geode
+  repository: geodedb/geode
   tag: "latest"
   pullPolicy: Always
 

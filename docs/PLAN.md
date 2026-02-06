@@ -360,7 +360,7 @@ name: geode
 description: Enterprise-ready graph database with ISO GQL compliance
 type: application
 version: 0.1.0
-appVersion: "0.18.0"
+appVersion: "0.1.4"
 keywords:
   - graph
   - database
@@ -373,7 +373,7 @@ keywords:
 replicaCount: 1
 
 image:
-  repository: registry.gitlab.com/devnw/codepros/geode/geode
+  repository: geodedb/geode
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -970,7 +970,7 @@ import (
     "log"
     "time"
 
-    _ "go.codepros.org/geode/driver"
+    _ "geodedb.com/geode"
 )
 
 func main() {
@@ -1229,7 +1229,7 @@ version: '3.8'
 
 services:
   geode:
-    image: registry.gitlab.com/devnw/codepros/geode/geode:0.18.0
+    image: geodedb/geode:0.1.4
     restart: always
     ports:
       - "3141:3141"
@@ -1396,7 +1396,7 @@ stages:
   - report
 
 variables:
-  GEODE_IMAGE: "registry.gitlab.com/devnw/codepros/geode/geode:latest"
+  GEODE_IMAGE: "geodedb/geode:latest"
   DOCKER_HOST: tcp://docker:2375
 
 # Build stage

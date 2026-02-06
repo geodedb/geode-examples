@@ -202,7 +202,7 @@ RETURN avg(p.age) AS average_age, count(p) AS total;
 
 **Go:**
 ```go
-import _ "go.codepros.org/geode/driver"
+import _ "geodedb.com/geode"
 
 db, _ := sql.Open("geode", "geode://localhost:3141")
 rows, _ := db.Query("MATCH (p:Person) RETURN p.name")
@@ -289,4 +289,4 @@ Step-by-step guides for learning Geode:
 
 Apache License 2.0
 
-Copyright 2024-2025 CodePros
+Copyright 2024-2026 CodePros

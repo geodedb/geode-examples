@@ -547,7 +547,7 @@ clean: ## Clean up environment
 	rm -rf $(PUBLIC_DIR)/*
 
 clean-docker: ## Remove Docker images
-	docker rmi registry.gitlab.com/devnw/codepros/geode/geode:latest 2>/dev/null || true
+	docker rmi geodedb/geode:latest 2>/dev/null || true
 	docker rmi geode-benchmark:latest 2>/dev/null || true
 	docker rmi geode-test-harness:latest 2>/dev/null || true
 

@@ -5,7 +5,7 @@ Automated verification report for geodedb.com documentation claims.
 **CANARY: REQ=REQ-DOCS-REPORT-001; FEATURE="VerificationReport"; ASPECT=Documentation; STATUS=COMPLETE**
 
 **Report Generated**: January 2026
-**Geode Version**: 0.18.0
+**Geode Version**: 0.1.4
 **Repository**: geode-examples
 
 ---

@@ -16,7 +16,7 @@ stages:
 
 # Global variables
 variables:
-  GEODE_IMAGE: "registry.gitlab.com/devnw/codepros/geode/geode:latest"
+  GEODE_IMAGE: "geodedb/geode:latest"
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
   FF_NETWORK_PER_BUILD: "true"
