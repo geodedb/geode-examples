@@ -26,7 +26,7 @@ CREATE INDEX idx_spatial_example ON Location(coords) USING spatial;
 -- Use cases: distance queries, bounding box
 
 -- INDEX TYPE 6: Patricia Trie (prefix matching, IP addresses)
-CREATE INDEX idx_trie_example ON Device(ip_address) USING trie;
+CREATE INDEX idx_trie_example ON Device(ip_address) USING network_cidr;
 -- Use cases: IP prefix matching, CIDR queries
 
 -- Summary table of when to use each index

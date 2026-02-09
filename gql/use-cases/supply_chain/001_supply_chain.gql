@@ -156,10 +156,12 @@ RETURN
 
 -- 9. Geographic Concentration Risk
 MATCH (s:Supplier)-[:SUPPLIES]->(c:Component)
+WITH DISTINCT s.country AS country, c.name AS component_name
+WITH country, COUNT(component_name) AS components_supplied, COLLECT(component_name) AS component_list
 RETURN
-    s.country AS country,
-    COUNT(DISTINCT c) AS components_supplied,
-    COLLECT(DISTINCT c.name) AS component_list
+    country,
+    components_supplied,
+    component_list
 ORDER BY components_supplied DESC;
 
 -- 10. End-to-End Supply Chain Visibility

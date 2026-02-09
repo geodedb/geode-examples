@@ -97,7 +97,8 @@ LIMIT 5;
 
 -- 3. Content-Based: Same Category Recommendations
 MATCH (me:User {id: 'user1'})-[:PURCHASED]->(bought:Product)
-WITH COLLECT(DISTINCT bought.category) AS my_categories, me
+WITH DISTINCT bought.category AS category, me
+WITH COLLECT(category) AS my_categories, me
 MATCH (recommended:Product)
 WHERE recommended.category IN my_categories
   AND NOT EXISTS {
@@ -105,7 +106,7 @@ WHERE recommended.category IN my_categories
   }
 RETURN
     recommended.name AS recommendation,
-    recommended.category AS category,
+    recommended.category AS rec_category,
     recommended.price AS price
 ORDER BY recommended.price DESC
 LIMIT 5;

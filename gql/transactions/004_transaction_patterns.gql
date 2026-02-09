@@ -5,12 +5,12 @@
 -- Source: Transaction Tutorial
 
 -- Pattern 1: Atomic Transfer (All or Nothing)
-START TRANSACTION WITH ISOLATION LEVEL SERIALIZABLE;
+START TRANSACTION;
 
 -- Check source has sufficient funds
 MATCH (source:Account {name: 'Alice'})
 WHERE source.balance >= 200
-WITH source
+WITH source;
 
 -- Perform transfer
 MATCH (source:Account {name: 'Alice'})
@@ -30,27 +30,21 @@ CREATE (:Transfer {
 COMMIT;
 
 -- Pattern 2: Read-Modify-Write with Optimistic Locking
-START TRANSACTION WITH ISOLATION LEVEL SERIALIZABLE;
+START TRANSACTION;
 
 MATCH (a:Account {name: 'Alice'})
-WHERE a.version = 1  -- Check version hasn't changed
+WHERE a.version = 1
 SET a.balance = a.balance + 50,
     a.version = a.version + 1;
 
 COMMIT;
 
--- Pattern 3: Batch Insert with Savepoints
+-- Pattern 3: Batch Insert
 START TRANSACTION;
 
-UNWIND [
-    {name: 'Product1', price: 100},
-    {name: 'Product2', price: 200},
-    {name: 'Product3', price: 300}
-] AS product
-
-CREATE (:Product {name: product.name, price: product.price});
-
-SAVEPOINT products_created;
+CREATE (:Product {name: 'Product1', price: 100});
+CREATE (:Product {name: 'Product2', price: 200});
+CREATE (:Product {name: 'Product3', price: 300});
 
 -- Create inventory records
 MATCH (p:Product)

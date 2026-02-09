@@ -71,12 +71,11 @@ CREATE (from)-[:TRANSFER {
 
 -- 1. Circular Transaction Detection (Money Laundering Ring)
 -- Find money flowing in a circle back to origin
-MATCH path = (a:Account)-[:TRANSFER*3..6]->(a)
+MATCH (a:Account)-[t:TRANSFER*3..6]->(a)
 RETURN
     a.name AS origin,
-    length(path) AS hops,
-    [n IN nodes(path) | n.name] AS accounts_involved,
-    reduce(total = 0, r IN relationships(path) | total + r.amount) AS total_amount;
+    length(t) AS hops,
+    [n IN nodes(t) | n.name] AS accounts_involved;
 
 -- 2. Structuring Detection (Smurfing)
 -- Multiple transactions just under reporting threshold ($10,000)

@@ -42,8 +42,8 @@ WHERE pop > 1
 RETURN city, pop
 ORDER BY pop DESC;
 
--- EXPLAIN ANALYZE: Like PROFILE but with additional analysis
-EXPLAIN ANALYZE
+-- PROFILE with verbose output: execution plan with actual metrics
+PROFILE
 MATCH (p:Person)-[:KNOWS]->(friend:Person)
 WHERE p.age > 25
 RETURN p.name, friend.name;

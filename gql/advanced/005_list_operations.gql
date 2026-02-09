@@ -23,12 +23,12 @@ WITH p
 ORDER BY p.age DESC
 RETURN COLLECT(p.name) AS names_by_age;
 
--- UNWIND: Expand list to rows
-UNWIND [1, 2, 3] AS num
+-- FOR: Expand list to rows (GQL standard)
+FOR num IN [1, 2, 3]
 RETURN num;
 
--- UNWIND with MATCH
-UNWIND ['Alice', 'Bob'] AS name
+-- FOR with MATCH
+FOR name IN ['Alice', 'Bob']
 MATCH (p:Person {name: name})
 RETURN p.name, p.age;
 

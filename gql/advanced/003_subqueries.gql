@@ -27,19 +27,16 @@ WHERE EXISTS {
 }
 RETURN p.name AS has_older_friends;
 
--- Correlated subquery pattern
+-- Correlated filter pattern: find people older than city average
 MATCH (p:Person)
-WHERE p.age > (
-    MATCH (other:Person)
-    WHERE other.city = p.city
-    RETURN AVG(other.age)
-)
+MATCH (other:Person)
+WHERE other.city = p.city
+WITH p, AVG(other.age) AS city_avg
+WHERE p.age > city_avg
 RETURN p.name, p.age, p.city;
 
--- COUNT in subquery
-MATCH (p:Person)
-WHERE (
-    MATCH (p)-[:KNOWS]->(:Person)
-    RETURN COUNT(*)
-) > 1
+-- Count-based filter: find people with more than one friend
+MATCH (p:Person)-[:KNOWS]->(friend:Person)
+WITH p, COUNT(friend) AS friend_count
+WHERE friend_count > 1
 RETURN p.name AS popular_people;

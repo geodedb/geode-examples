@@ -27,10 +27,8 @@ WHERE reachable <> start
 RETURN DISTINCT reachable.name
 ORDER BY reachable.name;
 
--- Shortest path pattern
-MATCH path = shortestPath(
-    (alice:Person {name: 'Alice'})-[:KNOWS*]-(dave:Person {name: 'Dave'})
-)
+-- Shortest path pattern (GQL standard)
+MATCH path = SHORTEST (alice:Person {name: 'Alice'})-[:KNOWS*]-(dave:Person {name: 'Dave'})
 RETURN
     [node IN nodes(path) | node.name] AS path_names,
     length(path) AS distance;

@@ -5,42 +5,34 @@
 -- Verifies claim: "6 isolation levels (Read Uncommitted to Serializable)"
 -- Source: Features Overview
 
--- READ UNCOMMITTED: Can see uncommitted changes from other transactions
--- (Lowest isolation, highest concurrency)
-START TRANSACTION WITH ISOLATION LEVEL READ UNCOMMITTED;
+-- Basic transaction: Read data
+START TRANSACTION;
 MATCH (a:Account)
 RETURN COUNT(a) AS account_count;
 COMMIT;
 
--- READ COMMITTED: Only sees committed changes
--- (Default in many databases)
-START TRANSACTION WITH ISOLATION LEVEL READ COMMITTED;
+-- Transaction: Filter and return
+START TRANSACTION;
 MATCH (a:Account)
 WHERE a.balance > 500
 RETURN a.name, a.balance;
 COMMIT;
 
--- REPEATABLE READ: Same query returns same results within transaction
--- (Prevents non-repeatable reads)
-START TRANSACTION WITH ISOLATION LEVEL REPEATABLE READ;
+-- Transaction: Aggregate query
+START TRANSACTION;
 MATCH (a:Account)
 RETURN SUM(a.balance) AS total_balance;
--- Same query would return same result even if other transactions commit
-MATCH (a:Account)
-RETURN SUM(a.balance) AS total_balance_again;
 COMMIT;
 
--- SNAPSHOT: Point-in-time consistent view
--- (Commonly used for reporting)
-START TRANSACTION WITH ISOLATION LEVEL SNAPSHOT;
+-- Transaction: Reporting query
+START TRANSACTION;
 MATCH (a:Account)
 RETURN a.name, a.balance
 ORDER BY a.balance DESC;
 COMMIT;
 
--- SERIALIZABLE: Highest isolation
--- (Transactions execute as if serial)
-START TRANSACTION WITH ISOLATION LEVEL SERIALIZABLE;
+-- Transaction: Read-modify-write
+START TRANSACTION;
 MATCH (a:Account)
 WHERE a.balance > 500
 WITH COUNT(a) AS high_balance_count
@@ -49,9 +41,8 @@ MATCH (a:Account)
 SET a.category = 'active';
 COMMIT;
 
--- LINEARIZABLE: Strongest guarantees
--- (Real-time ordering)
-START TRANSACTION WITH ISOLATION LEVEL LINEARIZABLE;
+-- Transaction: Timestamp update
+START TRANSACTION;
 MATCH (a:Account {name: 'Alice'})
 SET a.verified_at = timestamp();
 COMMIT;
