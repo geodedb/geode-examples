@@ -35,6 +35,8 @@ default:
     - docker:24.0-dind
   before_script:
     - apk add --no-cache make bash curl
+  tags:
+    - company
 
 # =============================================================================
 # Build Stage
