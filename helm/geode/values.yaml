@@ -6,7 +6,11 @@ replicaCount: 1
 
 image:
   repository: geodedb/geode
-  pullPolicy: IfNotPresent
+  # "Always" re-verifies the image against the registry on every pod start
+  # rather than trusting a locally-cached copy, closing the "Image Pull
+  # Policy Not Always" finding; this is a distributable example chart so
+  # image.tag is expected to move (development/latest-style tags).
+  pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion
   tag: ""
 
@@ -37,7 +41,13 @@ securityContext:
   capabilities:
     drop:
       - ALL
-  readOnlyRootFilesystem: false
+  # Verified against geodedb/geode:latest with `docker run --read-only
+  # --tmpfs /tmp`: the server starts, falls back gracefully to the writable
+  # /tmp emptyDir (mounted by the deployment template) for its self-signed
+  # TLS fallback and reaches "server ready". Real deployments should still
+  # supply tls.existingSecret or enable cert-manager rather than relying on
+  # the self-signed fallback.
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   # geodedb/geode images run as the built-in "geode" user (uid=10000,
   # gid=10000); this matches that user rather than an arbitrary low UID.

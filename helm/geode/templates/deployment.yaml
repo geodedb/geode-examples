@@ -15,6 +15,10 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # Explicit AppArmor profile for the geode container (defaults to the
+        # runtime's default profile; override via podAnnotations if a custom
+        # profile is loaded on cluster nodes).
+        container.apparmor.security.beta.kubernetes.io/{{ .Chart.Name }}: runtime/default
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -83,6 +87,8 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: config
               mountPath: /etc/geode
               readOnly: true
@@ -118,6 +124,8 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: config
           configMap:
             name: {{ include "geode.fullname" . }}-config
