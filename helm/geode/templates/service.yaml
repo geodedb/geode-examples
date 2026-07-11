@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "geode.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "geode.labels" . | nindent 4 }}
   {{- with .Values.service.annotations }}
@@ -27,6 +28,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "geode.fullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "geode.labels" . | nindent 4 }}
 spec:

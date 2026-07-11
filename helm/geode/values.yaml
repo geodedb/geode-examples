@@ -28,7 +28,9 @@ podAnnotations:
   prometheus.io/path: "/metrics"
 
 podSecurityContext:
-  fsGroup: 1000
+  fsGroup: 10000
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -37,7 +39,10 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: false
   runAsNonRoot: true
-  runAsUser: 1000
+  # geodedb/geode images run as the built-in "geode" user (uid=10000,
+  # gid=10000); this matches that user rather than an arbitrary low UID.
+  runAsUser: 10000
+  runAsGroup: 10000
 
 # Service configuration
 service:
