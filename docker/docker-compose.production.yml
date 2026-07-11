@@ -119,6 +119,10 @@ services:
       - monitoring
 
   # Node exporter for host metrics
+  # NOTE: node-exporter requires read-only host mounts of /proc, /sys, and /
+  # to collect host-level metrics; this is the standard, documented
+  # deployment pattern for prometheus/node-exporter (see upstream docs).
+  # All mounts below are explicitly read-only (:ro).
   node-exporter:
     image: prom/node-exporter:v1.7.0
     container_name: geode-production-node-exporter
