@@ -16,9 +16,13 @@ services:
   geode:
     image: geodedb/geode:test
     container_name: geode-test-server
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "3141:3141"
-      - "9090:9090"
+      - "127.0.0.1:3141:3141"
+      - "127.0.0.1:9090:9090"
     volumes:
       - geode-test-data:/var/lib/geode
       - ../configs/server/development.yaml:/etc/geode/geode.yaml:ro
@@ -37,9 +41,13 @@ services:
   geode-secure:
     image: geodedb/geode:test
     container_name: geode-test-secure
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "3142:3141"
-      - "9092:9090"
+      - "127.0.0.1:3142:3141"
+      - "127.0.0.1:9092:9090"
     volumes:
       - geode-secure-data:/var/lib/geode
       - ../configs/server/security-hardened.yaml:/etc/geode/geode.yaml:ro
@@ -64,6 +72,10 @@ services:
       dockerfile: docker/Dockerfile.benchmark
     image: geode-benchmark:test
     container_name: geode-test-benchmark
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       geode:
         condition: service_healthy
@@ -74,6 +86,12 @@ services:
       - GEODE_HOST=geode:3141
       - BENCHMARK_DURATION=60
       - BENCHMARK_CONCURRENCY=100
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q python /proc/1/cmdline || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - geode-test-network
 
@@ -84,6 +102,10 @@ services:
       dockerfile: docker/Dockerfile.test-harness
     image: geode-test-harness:test
     container_name: geode-test-harness
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       geode:
         condition: service_healthy
@@ -96,6 +118,12 @@ services:
       - GEODE_HOST=geode:3141
       - GEODE_SECURE_HOST=geode-secure:3141
       - PYTEST_ARGS=-v --tb=short
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q run_all_tests /proc/1/cmdline || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - geode-test-network
 
@@ -103,10 +131,20 @@ services:
   prometheus:
     image: prom/prometheus:v2.48.0
     container_name: geode-test-prometheus
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "9091:9090"
+      - "127.0.0.1:9091:9090"
     volumes:
       - ../configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - geode-test-network
 
@@ -114,8 +152,12 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: geode-test-kafka
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
@@ -126,6 +168,12 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: 'geode-test-cluster'
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     networks:
       - geode-test-network
     profiles:
