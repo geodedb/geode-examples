@@ -1,0 +1,38 @@
+services:
+  geode:
+    image: geodedb/geode:latest
+    container_name: geode-blog-posts
+    environment:
+      # The image's own baked-in HEALTHCHECK runs `geode query ... --insecure`,
+      # which this release build hard-refuses without this var set. Without
+      # it the container never reports healthy. See _shared/FINDINGS.md.
+      GEODE_ALLOW_INSECURE_TLS: '1'
+      # Seeds the admin ('geode') user's password directly on first boot.
+      # bootstrap.sh generates this and exports it into the environment
+      # before calling `docker compose up`. Seeding this way is required,
+      # not optional: the alternative flow (read the auto-generated
+      # password from /data/.geode_admin_password, then run
+      # `ALTER USER geode SET PASSWORD '...'` as the server's own error
+      # message instructs) changes the password successfully but does NOT
+      # clear the server's password_reset_required flag, permanently
+      # locking the account out of running any query. See
+      # _shared/FINDINGS.md section 2 for the full writeup.
+      GEODE_ADMIN_PASSWORD: ${GEODE_ADMIN_PASSWORD:?GEODE_ADMIN_PASSWORD must be set by bootstrap.sh before calling docker compose up}
+    ports:
+      # NOTE: host-side UDP 3141 is remapped to 31413 here because on the
+      # environment this was validated in, host UDP port 3141 was already
+      # bound by an unrelated process outside Docker's visibility (see
+      # _shared/FINDINGS.md). The container's *internal* QUIC port is still
+      # 3141 — bootstrap.sh never uses this host-published port anyway; it
+      # reaches the container via `--network container:<name>` network-
+      # namespace sharing, which talks to 127.0.0.1:3141 inside the
+      # container directly. If port 3141 is free on your host, you can
+      # change this back to "3141:3141/udp".
+    - 31413:3141/udp
+    - 50051:50051/tcp
+    - 9090:9090/tcp
+    healthcheck:
+      interval: 5s
+      timeout: 5s
+      start_period: 15s
+      retries: 6
