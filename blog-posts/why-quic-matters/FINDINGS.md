@@ -26,19 +26,76 @@ async with client.connection() as conn:
     session = await auth.login("username", "password")
 ```
 
-**Live-tested against the real server, this does not work.** Connecting
-with a DSN that has no credentials, then calling
-`AuthClient(conn).login(user, pass)` inside the connection context,
-raises immediately:
+**Live-tested against the real server, this does not work -- but not for
+the reason an earlier version of this finding claimed.** This section
+was corrected after a code-review pass that read the real
+`geode-client-python` source (`geode_client/client.py`,
+`geode_client/auth.py`) and found the original attribution wrong; the
+correction below is confirmed both by reading that source directly and
+by re-running the reproduction live against the container.
+
+**Where it actually fails, precisely:** entering `async with
+client.connection() as conn:` calls `Connection.__aenter__()`, which
+calls `Connection.connect()`. `connect()` performs the connection's
+HELLO handshake automatically, and if the DSN carries no credentials the
+server rejects the HELLO and `connect()` itself raises:
 
 ```text
-FAILED: AuthError Authentication failed: Authentication required
+Traceback (most recent call last):
+  File ".../client.py", line 19, in main
+    async with client.connection() as conn:
+  File ".../geode_client/client.py", line 436, in __aenter__
+    await self.connect()
+  File ".../geode_client/client.py", line 513, in connect
+    raise AuthError(f"Authentication failed: {response.error_message}")
+geode_client.client.AuthError: Authentication failed: Authentication required
 ```
 
-i.e. the login call itself is rejected before it can establish a session.
-This matches (and is now cross-confirmed by) `introducing-geode`'s
-Python finding: credentials must be embedded in the DSN itself. Tested
-and confirmed working:
+This is real, captured output from a standalone probe script (DSN with
+no credentials, `async with client.connection() as conn:` and nothing
+else -- no `AuthClient` call anywhere in the script). **The `async
+with` block's body never executes at all** -- the failure happens
+entirely inside `__aenter__()`/`connect()`, before any of the caller's
+code runs. So whatever the block body contains -- an `AuthClient(conn)
+.login(...)` call, a query, anything -- is irrelevant to this failure;
+none of it is ever reached. The README's documented pattern only *looks*
+like it's `AuthClient.login()` being rejected; it's actually `connect()`'s
+own implicit HELLO handshake failing first, for the unrelated reason
+that the DSN carries no credentials for that handshake to use.
+
+**Separately, and independent of the above: `AuthClient.login()` is
+itself broken dead code.** Read `geode_client/auth.py`'s `login()`
+method: it does `async with self.conn._lock: await
+self.conn._write_json(req); resp = await self.conn._read_json()`. The
+real `Connection` class (`geode_client/client.py`) has no `_lock`,
+`_write_json`, or `_read_json` attributes or methods anywhere --
+confirmed directly against the source, and confirmed live: connecting
+successfully via DSN-embedded credentials (so `connect()` succeeds and
+the block body *does* run this time), then calling `AuthClient(conn)
+.login(user, pass)` on that live, already-authenticated connection,
+raises:
+
+```text
+Traceback (most recent call last):
+  File ".../auth.py", line 227, in login
+    async with self.conn._lock:
+AttributeError: 'Connection' object has no attribute '_lock'
+```
+
+So even in the hypothetical world where `connect()`'s own HELLO
+handshake didn't already make `AuthClient.login()` unreachable for a
+no-credentials DSN, calling it would still fail -- with a different
+exception (`AttributeError`, not `AuthError`) and for a different reason
+(nonexistent attributes on `Connection`, not a rejected login). This
+makes `AuthClient.login()` unreachable dead code in every path: it can
+never succeed and can never even be the proximate cause of the
+`AuthError` seen with the README's documented pattern, because
+`connect()` always fails first whenever the login would have been
+needed.
+
+**Practical fix, unchanged from before**: credentials must be embedded
+in the DSN itself, exactly as `introducing-geode`'s Python finding also
+found. Tested and confirmed working:
 
 ```python
 dsn = (
@@ -47,7 +104,8 @@ dsn = (
 )
 client = open_database(dsn)
 async with client.connection() as conn:
-    ...  # already authenticated, no AuthClient call needed
+    ...  # already authenticated by connect()'s own HELLO handshake,
+    ...  # no AuthClient call needed or usable
 ```
 
 (The Python client's README documents `insecure_tls_skip_verify` in its
@@ -55,11 +113,33 @@ DSN Query Parameters table; `introducing-geode`'s Python finding found
 `skip_verify` also works as an accepted alias. This project uses the
 README-documented name.)
 
-**Task 7 should note**: this may be a client library or server behavior
-gap worth its own bug report (the README's own documented Authentication
-flow doesn't work), separate from the blog post's inaccuracy -- but
-fixing the blog post itself just means: show credentials in the DSN, not
-a post-connect `AuthClient.login()` call.
+**Task 7 should note, as two separate bug reports against
+`geode-client-python`, not one:**
+
+1. The README's documented post-connect `AuthClient(conn).login(...)`
+   flow is unreachable for any DSN lacking credentials, because
+   `connect()`'s own implicit HELLO handshake (run automatically by
+   `__aenter__()`) fails first and prevents the `async with` block body
+   from ever running. The README should either show DSN-embedded
+   credentials as the primary/only pattern, or explain that
+   `AuthClient.login()` requires a connection that already
+   authenticated some other way.
+2. **`AuthClient.login()` cannot work at all, under any circumstances,
+   as currently implemented** -- it references `self.conn._lock`,
+   `self.conn._write_json`, and `self.conn._read_json`, none of which
+   exist on `Connection`. This is not just an unreachable-in-practice
+   flow; it is broken on its own terms. Every other method on
+   `AuthClient` (`logout`, `create_user`, `delete_user`, `list_users`,
+   `create_role`, etc.) uses the same nonexistent
+   `self.conn._lock`/`_write_json`/`_read_json` pattern, so the entire
+   `AuthClient` class -- not just `login()` -- appears to be dead code
+   shipped against an internal `Connection` API that was since
+   refactored (`Connection` now only exposes `query`/`execute`/etc. over
+   a protobuf-based `_transport`, not JSON request/response methods).
+   This is more significant than a documentation mismatch: it's a
+   public class whose every method is provably unusable against the
+   client's own current `Connection` implementation, and it deserves a
+   bug report in its own right, independent of finding 1.
 
 ---
 

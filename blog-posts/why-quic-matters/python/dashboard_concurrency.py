@@ -21,12 +21,21 @@ from geode_client import open_database
 async def main() -> None:
     # NOTE on auth: the post-connect `AuthClient(conn).login(...)` flow the
     # README documents for this client does NOT work against this server --
-    # live-tested (see ../FINDINGS.md): it raises
-    # `AuthError: Authentication failed: Authentication required` even with
-    # correct credentials. Credentials must be embedded in the DSN itself,
-    # exactly as confirmed for this client in ../../introducing-geode's
-    # FINDINGS.md (`skip_verify`/`insecure_tls_skip_verify` are both
-    # accepted as aliases; this file uses the README-documented
+    # live-tested (see ../FINDINGS.md's "Global finding: Python auth
+    # pattern" for the full, source-verified causal chain). In short:
+    # entering `async with client.connection() as conn:` with no DSN
+    # credentials fails INSIDE `Connection.connect()`'s own implicit HELLO
+    # handshake (`AuthError: Authentication failed: Authentication
+    # required`), which runs automatically in `__aenter__()` before the
+    # `async with` block body -- including any `AuthClient.login()` call --
+    # ever executes. Separately, `AuthClient.login()` is itself broken dead
+    # code: it references `self.conn._lock`/`_write_json`/`_read_json`,
+    # none of which exist on the real `Connection` class, so it raises
+    # `AttributeError` if it's ever actually reached. Credentials must be
+    # embedded in the DSN itself instead, exactly as confirmed for this
+    # client in ../../introducing-geode's FINDINGS.md
+    # (`skip_verify`/`insecure_tls_skip_verify` are both accepted as
+    # aliases; this file uses the README-documented
     # `insecure_tls_skip_verify` name).
     dsn = (
         f"quic://{os.environ['GEODE_HOST']}:{os.environ['GEODE_PORT']}"
