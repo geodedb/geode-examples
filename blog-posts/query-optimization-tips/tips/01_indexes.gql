@@ -1,0 +1,13 @@
+// Tip 1: Use Indexes Wisely
+// NOTE: the post's example uses "alice@example.com" -- that address does
+// not exist in this project's seed data, so the query below uses
+// "person1@example.com" (the brief's own suggested value) to get a real,
+// non-empty result against the seeded 500 Person nodes.
+
+// Create index (hash index is ideal for exact-match lookups)
+CREATE INDEX person_email ON Person(email) USING hash;
+
+// Now this is fast
+MATCH (p:Person)
+WHERE p.email = "person1@example.com"
+RETURN p;

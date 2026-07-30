@@ -1,0 +1,13 @@
+// Tip 10: Profile Your Queries
+// Both EXPLAIN and PROFILE forms of the post's example query, as two
+// separate statements, since the tip's whole point is comparing them.
+
+EXPLAIN
+MATCH (p:Person)-[:KNOWS*2..3]-(friend)
+WHERE p.age > 30
+RETURN friend.name;
+
+PROFILE
+MATCH (p:Person)-[:KNOWS*2..3]-(friend)
+WHERE p.age > 30
+RETURN friend.name;

@@ -1,0 +1,14 @@
+// Bonus: Use Vector Indexes for Similarity Search
+
+// Create the index once
+CREATE INDEX doc_embedding_idx ON Document(embedding) USING vector;
+
+// Now the engine walks the HNSW graph instead of scanning every row
+MATCH (d:Document)
+WHERE distance(d.embedding, $query_vector, 'l2') < 0.5
+RETURN d;
+
+// Or ask for the k nearest neighbors directly
+MATCH (d:Document)
+WITH d, knn(d.embedding, $query_vector, 10) AS neighbors
+RETURN neighbors;

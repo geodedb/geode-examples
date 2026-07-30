@@ -1,0 +1,5 @@
+// Tip 8: Choose Specific Relationship Types
+
+// Fast: only checks specified types
+MATCH (p:Person)-[r:KNOWS|WORKS_WITH]-(other)
+RETURN p, other;

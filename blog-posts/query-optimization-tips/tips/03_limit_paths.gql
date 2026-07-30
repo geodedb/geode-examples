@@ -1,0 +1,5 @@
+// Tip 3: Limit Variable-Length Paths
+
+// Fast: limited to 3 hops
+MATCH path = (start:Person)-[:KNOWS*1..3]-(end:Person)
+RETURN path;

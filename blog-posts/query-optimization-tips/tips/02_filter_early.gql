@@ -1,0 +1,16 @@
+// Tip 2: Filter Early with WHERE
+// NOTE: the post's Solution relies on GQL's documented "implicit
+// grouping" (any non-aggregated RETURN expression becomes a grouping
+// key with no separate GROUP BY needed) -- that does NOT hold on this
+// server: `RETURN p.name, count(friend)` with no GROUP BY fails with
+// `Error: grouping error: non-aggregated expression not in GROUP BY`
+// even in the simplest possible case (confirmed independently of this
+// query's two-MATCH structure -- see FINDINGS.md #4). Added the
+// explicit GROUP BY the post's own note says should be unnecessary.
+
+// Fast: filters first, then traverses
+MATCH (p:Person)
+WHERE p.country = "USA"
+MATCH (p)-[:KNOWS*1..3]-(friend)
+RETURN p.name, count(friend)
+GROUP BY p.name;

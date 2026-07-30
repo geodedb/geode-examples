@@ -1,0 +1,9 @@
+// Bonus: Use Compound Indexes
+
+// For queries with multiple filters - a composite index
+CREATE INDEX person_country_age ON Person(country, age);
+
+// Now this is fast
+MATCH (p:Person)
+WHERE p.country = "USA" AND p.age > 30
+RETURN p;

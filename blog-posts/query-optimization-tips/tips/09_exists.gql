@@ -1,0 +1,11 @@
+// Tip 9: Use EXISTS for Existence Checks
+// NOTE: the post's Solution uses `EXISTS((p)-[:KNOWS]->())` -- a
+// pattern wrapped directly in parens -- which fails with `Error: parse
+// error` on this server (confirmed live). The curly-brace subquery form
+// `EXISTS { <pattern> }` parses and runs correctly; used below. See
+// FINDINGS.md.
+
+// Fast: stops at first match
+MATCH (p:Person)
+WHERE EXISTS { (p)-[:KNOWS]->() }
+RETURN p;

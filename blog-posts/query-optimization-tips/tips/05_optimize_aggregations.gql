@@ -1,0 +1,11 @@
+// Tip 5: Optimize Aggregations
+// NOTE: the post's own note under this tip says GQL uses "implicit
+// grouping" and that no separate GROUP BY is needed -- that does NOT
+// hold on this server (confirmed with this exact query and with a
+// minimal repro; see FINDINGS.md #4). Added the explicit GROUP BY the
+// post's note says should be unnecessary.
+
+// Fast: follows relationship efficiently
+MATCH (p:Person)-[:WORKS_AT]->(c:Company)
+RETURN p.department, count(p)
+GROUP BY p.department;

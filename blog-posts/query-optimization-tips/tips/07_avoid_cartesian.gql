@@ -1,0 +1,5 @@
+// Tip 7: Avoid Cartesian Products
+
+// Fast: uses relationship
+MATCH (p:Person)-[:WORKS_AT]->(c:Company)
+RETURN p.name, c.name;

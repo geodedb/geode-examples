@@ -1,0 +1,6 @@
+// Bonus: Denormalize When Appropriate
+
+// Fast: denormalized
+MATCH (p:Person)
+WHERE p.state = "California"
+RETURN p;

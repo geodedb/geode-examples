@@ -1,0 +1,7 @@
+// Tip 6: Use WITH for Pipeline Optimization
+
+// Fast: computes length once
+MATCH path = (p:Person)-[:KNOWS*1..3]-(friend)
+WITH p, friend, length(path) AS path_length
+WHERE path_length > 2
+RETURN p.name, path_length;

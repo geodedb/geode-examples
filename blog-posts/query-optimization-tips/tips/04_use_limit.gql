@@ -1,0 +1,6 @@
+// Tip 4: Use LIMIT for Large Results
+
+// Fast: returns only what you need
+MATCH (p:Person)
+RETURN p
+LIMIT 100;

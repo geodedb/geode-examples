@@ -1,0 +1,4 @@
+// Bonus: Use Parameters
+
+// Fast: parsed once, cached plan
+MATCH (p:Person {name: $name}) RETURN p;
