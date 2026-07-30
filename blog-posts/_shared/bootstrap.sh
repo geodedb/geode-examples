@@ -60,13 +60,26 @@ fi
 # The image's HEALTHCHECK is known-broken (see FINDINGS.md) even with
 # GEODE_ALLOW_INSECURE_TLS=1 set — confirm the *real* readiness signal
 # instead: the QUIC listener log line.
+#
+# `docker logs ... | grep -q ...` is unsafe here: under `pipefail`, once
+# `grep -q` finds its match it exits immediately and closes its end of the
+# pipe, and `docker logs` — mid-write against a container log that keeps
+# growing across repeated calls in this loop — can be signaled (SIGPIPE)
+# before it finishes, turning "found it" into a spurious pipeline failure.
+# Two tasks downstream hit this as an intermittent non-zero exit as the
+# shared container's log grew. Redirecting to a file first removes the
+# live pipe entirely: `docker logs` always runs to completion, and
+# `grep -q FILE` reads a static, fully-written snapshot.
 echo "[bootstrap] waiting for QUIC transport to report 'listening'..."
+LOG_SNAPSHOT="$(mktemp)"
 for i in $(seq 1 30); do
-  if docker logs "$CONTAINER_NAME" 2>&1 | grep -q '"status":"listening"'; then
+  docker logs "$CONTAINER_NAME" >"$LOG_SNAPSHOT" 2>&1 || true
+  if grep -q '"status":"listening"' "$LOG_SNAPSHOT"; then
     break
   fi
   sleep 1
 done
+rm -f "$LOG_SNAPSHOT"
 
 # Resolve the container's IP directly rather than trusting hostname
 # resolution over the QUIC/UDP path (see FINDINGS.md).
