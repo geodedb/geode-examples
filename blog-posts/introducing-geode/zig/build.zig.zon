@@ -1,0 +1,17 @@
+.{
+    .name = .introducing_geode_example,
+    .version = "0.1.0",
+    .fingerprint = 0x5ce8a9a8997f482,
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{
+        .geode_client_zig = .{
+            .url = "git+https://gitlab.com/devnw/codepros/geode/geode-client-zig.git?ref=main#0b4d18128d7795a0d4276cf2f5ce964a94059fd9",
+            .hash = "geode_client_zig-0.3.6-8ysbVy10CwCEjCF9tbsmQlv_AeSFrca3gUVA5CRH8Dwb",
+        },
+    },
+}

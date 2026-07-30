@@ -1,0 +1,14 @@
+{
+  "name": "introducing-geode-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Node.js example project for the Introducing Geode blog post.",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@geodedb/client": "^1.0.0"
+  }
+}
