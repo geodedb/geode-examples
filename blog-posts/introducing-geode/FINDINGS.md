@@ -237,19 +237,52 @@ post bug independent of auth/TLS, for a client the post itself labels
 **beta** (not alpha), so it is a real documentation defect to fix, not an
 expected-maturity gap.
 
-**What had to change (DSN/auth, same shape as Go):**
+**What had to change (DSN/auth):**
+
+An earlier version of this file used
+`?insecure_tls_skip_verify=true&user=...&pass=...` query params and
+asserted this was "the same shape as Go." That claim did **not** match the
+real `geode-client-nodejs` README (re-fetched and re-read in full for this
+fix pass, `main` branch, commit `4930cce8`). The README's DSN Format section
+documents exactly one place for credentials:
+
+```text
+quic://[username:password@]host[:port][?options]   # QUIC transport (default port: 3141)
+```
+
+and its Options table (`page_size`, `hello_name`, `hello_ver`,
+`conformance`, `graph`, `tenant`, `role`, `tls`,
+`insecure_tls_skip_verify`, `ca`, `cert`, `key`, `server_name`,
+`connect_timeout`, `request_timeout`) has **no** `user`/`pass` query-param
+options at all -- the query-param form used in the earlier version of this
+example was never documented and happened to work anyway (the client
+apparently accepts undocumented query params without validation, or the
+values were silently ignored and auth succeeded some other way -- not
+investigated further since the README's own form works and should be
+preferred).
+
+**Live-validated fix:** switch to DSN userinfo, exactly as the README's own
+"With authentication" example (`createClient('quic://admin:secret@localhost:3141')`)
+shows, combined with `insecure_tls_skip_verify=true` for the dev cert:
 
 ```ts
-const dsn = `quic://${host}:${port}?insecure_tls_skip_verify=true&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`;
+const dsn = `quic://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}?insecure_tls_skip_verify=true`;
 const client = await createClient(dsn);
 ```
 
-`user`/`pass` are percent-encoded because, like the Rust case, the shared
-dev password contains spaces; unlike Rust, the Node client's config API
-only accepts credentials via the DSN (userinfo or query params), so
-`encodeURIComponent` on the query-param values is the simplest safe path
-(userinfo would also need it, plus bracket/escaping rules for the `@`
-delimiter).
+`user`/`pass` are percent-encoded because the shared dev password contains
+spaces, which are not valid raw characters in URL userinfo.
+
+**Confirmed working against the live container** (`nodejs/index.mjs`,
+`node index.mjs`):
+
+```text
+OK: 13 Person node(s) returned
+```
+
+(run standalone during this fix pass, before the full `validate.sh` re-run
+below; count reflects Person nodes already accumulated in the shared
+container from prior runs.)
 
 **Client bug found (blocks the post's literal `RETURN p` operation, does
 require documenting -- and arguably fixing upstream, since Node.js is
@@ -324,79 +357,106 @@ defer result.deinit();
 ```
 
 **What happened running it as-is:** not run as written -- `geode.Client`
-does not exist. The module's real export (confirmed against the crate's own
-`tests/integration.zig`, which is authoritative here because it's
-*executed* code -- unlike the README's Quick Start, which itself disagrees
-with the integration tests on the constructor and handshake calls) is
-`GeodeClient`, constructed via `GeodeClient.initWithTransport(allocator,
-host, port, insecure, username, password, transport)`, not a 3-arg `init`.
-This is expected for an **alpha** client per the post's own maturity
-disclaimer -- the API-shape mismatch is a genuine finding, but doesn't
-necessarily need a post fix beyond noting the real constructor name, since
-alpha APIs are expected to move.
+does not exist. The module's real export is `GeodeClient`.
 
-A second, separate mismatch: the client's own README Quick Start shows
-`client.sendHello("my-app", "1.0.0")` (two args), but the client's own
-integration test suite calls `client.sendHello()` with **no** arguments and
-that's what actually compiles and works. This is an internal README/test
-inconsistency in the client repo itself, not something to fix in the blog
-post -- flagged here for whoever owns `geode-client-zig` next.
-
-**What had to change:**
-
-1. Real constructor: `GeodeClient.initWithTransport(allocator, host, port,
-   true /* insecure */, username, password, Transport.quic)`.
-2. Explicit handshake before querying: `try client.connect();` then
-   `try client.sendHello();` (no args) -- the post's snippet queries
-   immediately after `init`, with no connect/handshake step at all.
-3. `std.heap.GeneralPurposeAllocator` does not exist in Zig 0.16 (renamed to
-   `std.heap.DebugAllocator`) -- unrelated to the Geode client itself, a
-   Zig-version issue for anyone following the post's Getting Started example
-   verbatim with a current Zig toolchain. The post doesn't show allocator
-   setup at all, so this is worth a one-line callout rather than a code
-   change to the snippet itself.
-4. Build setup: the client is not on any package registry (no
-   `zig-pkg-manager`-style central index) -- it's added via
-   `zig fetch --save=geode_client_zig
-   "git+https://gitlab.com/devnw/codepros/geode/geode-client-zig.git#main"`,
-   which also pulls a substantial private dependency graph (QUIC, TLS,
-   thread-pool, GQL parser, etc., all from `gitlab.com/devnw/zig/*`). The
-   consuming `build.zig` must also link `libc`, `ssl`, and `crypto` (Linux:
-   `dl` too), mirroring the client's own `linkSystemDeps` helper -- this is
-   undocumented in the client's own README, which shows only the
-   `build.zig.zon`/`build.zig` snippet for declaring the dependency, not the
-   system-library link requirement.
-
-**Corrected snippet** (`zig/src/main.zig`):
+**Reconciliation pass (this fix): the client's own README Quick Start was
+re-fetched and re-read in full** (`geode-client-zig`, `main` branch, commit
+`0b4d1812`). It documents:
 
 ```zig
-var client = try GeodeClient.initWithTransport(
-    allocator, host, port, true, username, password, Transport.quic,
-);
-defer client.deinit();
+var client = geode.GeodeClient.init(allocator, "localhost", 3141, true);
+// ...
 try client.connect();
-try client.sendHello();
-
-var result = try client.query("MATCH (p:Person) RETURN p", null);
-defer result.deinit();
+try client.openStream();
+try client.sendHello("my-app", "1.0.0");
+const response = try client.receiveMessage(30000);
+// ...
+try client.sendQuery("MATCH (n:Person) RETURN n.name, n.age");
+const result = try client.receiveMessage(30000);
 ```
 
-**Result:** `OK: 6 Person node(s) returned`, first successful run once the
-real API and system-library links were in place.
+plus a separate `Config`/`.withCredentials(user, pass)` builder pattern
+documented right below it. An earlier version of this file used a 7-arg
+`GeodeClient.initWithTransport(allocator, host, port, insecure, username,
+password, transport)` that appears **nowhere** in the README (it was
+sourced from the client's integration tests instead) -- that claim is
+replaced below with an actual reconciliation against the README, including
+the real compiler errors hit along the way.
 
-**Client-maturity note (does not require a post fix per se, beyond noting
-the real API):** the README Quick Start's `init`/`sendHello(name, ver)`
-signatures are stale relative to the client's own integration tests --
-worth flagging to the `geode-client-zig` maintainers, but the post's job is
-just to show correct, working code, which it now does via the real,
-tested API shape.
+**Tried the README's exact Quick Start verbatim, compiled it against the
+installed client (geode-client-zig 0.3.6), and it fails in two independent
+ways:**
 
-**Post fix needed:** replace the fictional `geode.Client.init(...)` /
-2-arg `.query(...)` shape with the real `GeodeClient.initWithTransport(...)`
-plus `connect()` plus `sendHello()` plus `query(gql, null)` sequence, and
-add a one-line note that TLS/auth params are required (mirroring the other
-four languages) plus the system-library link requirement for anyone building
-their own `build.zig` against this client.
+1. `std.heap.GeneralPurposeAllocator` doesn't exist in Zig 0.16 (renamed to
+   `std.heap.DebugAllocator`) -- a Zig-version issue, not a client bug.
+   After fixing that line to unblock further compilation:
+2. `GeodeClient.init(allocator, "localhost", 3141, true)` -- the real
+   compiler error:
+
+   ```text
+   src/main.zig:12:35: error: expected 6 argument(s), found 4
+       var client = geode.GeodeClient.init(allocator, "localhost", 3141, true);
+                    ~~~~~~~~~~~~~~~~~^~~~~
+   .../geode_client_v2.zig:75:9: note: function declared here
+       pub fn init(allocator: std.mem.Allocator, host: []const u8, port: u16, insecure: bool, username: []const u8, password: []const u8) !GeodeClient {
+   ```
+
+   The installed `init` requires `username`/`password` as required
+   positional args (6 total) -- the README's 4-arg, no-credentials call
+   never compiles against 0.3.6. `openStream()`, `sendHello(name, ver)`
+   (2-arg), `receiveMessage()`, and `sendQuery()` as the README shows them
+   are also not what's actually exported (the real, no-arg `sendHello()`
+   was already confirmed in the earlier version of this file; the others
+   were not individually re-verified once `init` itself failed to compile).
+
+**Then tried the README's `Config`/`.withCredentials()` builder pattern**
+(the second construction path the README documents, right below the Quick
+Start) **against the same installed 0.3.6 package, correcting only the
+parts that don't compile as literally written:**
+
+- The README's `cfg.withHost("localhost")` / `cfg.withPort(3141)` don't
+  exist as methods at all -- replaced with the real
+  `Config.initWithHost(host, port)`, which combines both.
+- The README's `cfg.withCredentials("admin", "secret")` (2 args, no `try`)
+  doesn't match the real signature: `withCredentials(self: *Config,
+  allocator: std.mem.Allocator, username: []const u8, password: []const
+  u8) !*Config` -- it takes an allocator and returns an error union.
+- Getting from a built `Config` to a `GeodeClient` isn't shown in the
+  README at all; the real client exposes `GeodeClient.initFromConfig(
+  allocator, cfg: config.Config) !GeodeClient` for exactly this.
+
+**With those three corrections, the Config/withCredentials/initFromConfig
+path -- which matches the README's *documented approach* (build a `Config`,
+attach credentials via `.withCredentials()`, pass it to the client) even
+though not its literal syntax -- compiles and runs successfully against the
+live container:**
+
+```text
+OK: 15 Person node(s) returned
+```
+
+This is a real, working fix that stays much closer to what the README
+actually documents than the previous `initWithTransport(...)` version of
+this file, which does not appear in the README anywhere.
+
+**Client-library documentation bug, worth noting separately from the blog
+post's own inaccuracy:** `geode-client-zig`'s README Quick Start and Config
+example are both stale relative to the installed 0.3.6 package -- `init()`
+requires 2 more args than shown, `withHost`/`withPort` don't exist,
+`withCredentials()` needs an allocator and a `try`, and `openStream()` /
+`sendHello(name, ver)` / `receiveMessage()` / `sendQuery()` from the Quick
+Start don't match the real API surface either (confirmed `sendHello()` is
+no-arg; the other three were not directly re-verified since `init` itself
+already failed to compile). This should be filed as a documentation bug
+against `geode-client-zig` independent of the blog post fix.
+
+**Post fix needed:** replace the fictional `geode.Client.init(...)` shape
+with a `Config.initWithHost(host, port)` + `.withCredentials(allocator,
+user, pass)` + `.withInsecure(true)` + `GeodeClient.initFromConfig(
+allocator, cfg)` sequence, plus explicit `connect()` and `sendHello()`
+(no args) before querying. Given the client is alpha, some API-shape churn
+is expected per the post's own maturity disclaimer, but the post's code
+should show real, compiling code regardless.
 
 ---
 
@@ -407,8 +467,8 @@ their own `build.zig` against this client.
 | Go | none (DSN just incomplete) | `insecure_tls_skip_verify=true&user=...&pass=...` | none found |
 | Python | none (DSN just incomplete) | `skip_verify=1&user=...&pass=...` (**different param name than the others**) | none found |
 | Rust | `Client::connect(dsn)` doesn't exist; real API is `Client::new(host, port)...connect()` | `.skip_verify(true).username(...).password(...)` (builder, not DSN userinfo -- password has spaces) | none found |
-| Node.js | `connect` doesn't exist; real export is `createClient` | `insecure_tls_skip_verify=true&user=...&pass=...` (percent-encoded) | **Yes** -- whole-node (`RETURN p`) decode crashes on 64-bit node IDs > `Number.MAX_SAFE_INTEGER`; post's `RETURN p` example must change to scalar properties, or wait for an upstream fix |
-| Zig | `geode.Client.init(...)` doesn't exist; real API is `GeodeClient.initWithTransport(...)` + explicit `connect()`/`sendHello()` | credentials passed directly to `initWithTransport`, plus `true` for insecure TLS | API-shape only (expected for alpha); README's own Quick Start disagrees with its integration tests |
+| Node.js | `connect` doesn't exist; real export is `createClient` | DSN userinfo `quic://user:pass@host:port?insecure_tls_skip_verify=true` (percent-encoded) -- the README documents credentials **only** via userinfo, no `user=`/`pass=` query params exist | **Yes** -- whole-node (`RETURN p`) decode crashes on 64-bit node IDs > `Number.MAX_SAFE_INTEGER`; post's `RETURN p` example must change to scalar properties, or wait for an upstream fix |
+| Zig | `geode.Client.init(...)` doesn't exist as documented (README's 4-arg form doesn't compile against 0.3.6: real `init` needs 6 args); real working path is `Config.initWithHost(...)` + `.withCredentials(allocator, user, pass)` + `.withInsecure(true)` + `GeodeClient.initFromConfig(...)`, matching the README's *documented approach* once its stale method signatures are corrected | credentials via `Config.withCredentials()`, plus `.withInsecure(true)` for insecure TLS | **Yes** -- README's Quick Start and Config example are both stale relative to the installed 0.3.6 package (`init()` arg count, missing `withHost`/`withPort`, `withCredentials()` signature, `openStream()`/`sendHello(name,ver)`/`receiveMessage()`/`sendQuery()`) |
 
 Every language's DSN needs *some* form of `insecure_tls_skip_verify`
 (client-specific param name) plus credentials for local/dev use against

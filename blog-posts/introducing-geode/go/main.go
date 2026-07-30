@@ -19,6 +19,19 @@ import (
 )
 
 func main() {
+	// NOTE on encoding: GEODE_USER/GEODE_PASSWORD are interpolated raw here,
+	// unlike nodejs/index.mjs's encodeURIComponent() calls. This is safe for
+	// this driver specifically: the Go client's own DSN parser splits on the
+	// literal `&`/`=` delimiters without running the query string through a
+	// standards-strict net/url-style percent-decoder first, so an unescaped
+	// space in GEODE_PASSWORD (the shared dev password is a multi-word
+	// passphrase, see ../_shared/bootstrap.sh) passes through intact rather
+	// than truncating or erroring -- confirmed by this file actually
+	// authenticating successfully against the live container. This is a
+	// property of *this* client's parser, not a general rule; do not assume
+	// other DSN-based clients will tolerate unescaped reserved characters
+	// (Node.js's README-documented userinfo form, for one, needs
+	// encodeURIComponent -- see FINDINGS.md).
 	dsn := fmt.Sprintf("quic://%s:%s?insecure_tls_skip_verify=true&user=%s&pass=%s",
 		mustEnv("GEODE_HOST"), mustEnv("GEODE_PORT"), mustEnv("GEODE_USER"), mustEnv("GEODE_PASSWORD"))
 

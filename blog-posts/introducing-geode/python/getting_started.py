@@ -19,6 +19,17 @@ async def main() -> None:
     # ../FINDINGS.md. `user`/`pass` DSN params authenticate the connection
     # up front, so the separate AuthClient.login() call the post's own
     # snippet never mentions is not needed.
+    #
+    # NOTE on encoding: GEODE_USER/GEODE_PASSWORD are interpolated raw here,
+    # like go/main.go and unlike nodejs/index.mjs's encodeURIComponent()
+    # calls. This is safe for this driver specifically: the Python client's
+    # DSN parser does not run the query string through a strict
+    # urllib.parse-style percent-decoder before splitting on `&`/`=`, so the
+    # shared dev password's literal space (see ../_shared/bootstrap.sh)
+    # passes through unescaped -- confirmed by this script actually
+    # authenticating successfully against the live container. Do not assume
+    # this holds for other DSN-based clients (see FINDINGS.md's Node.js
+    # section, which does need percent-encoding).
     dsn = (
         f"quic://{os.environ['GEODE_HOST']}:{os.environ['GEODE_PORT']}"
         f"?skip_verify=1&user={os.environ['GEODE_USER']}&pass={os.environ['GEODE_PASSWORD']}"

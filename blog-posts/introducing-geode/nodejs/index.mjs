@@ -7,10 +7,12 @@
 // real export is `createClient`, not `connect`, and the DSN needs TLS/auth
 // params against a real server. See ../FINDINGS.md for the full story.
 //
-// Auth is passed as `user`/`pass` query params (percent-encoded) rather
-// than `user:pass@host` userinfo, because the shared dev password contains
-// spaces (see bootstrap.sh) and query params are simpler to get right than
-// URL userinfo encoding.
+// Auth is passed as DSN userinfo (`user:pass@host`), matching the real
+// client's README (DSN Format: `quic://[username:password@]host[:port]
+// [?options]`; the Options table has no `user`/`pass` query params at all).
+// user/pass are percent-encoded because the shared dev password contains
+// spaces (see bootstrap.sh) and raw spaces/reserved characters are not
+// valid in URL userinfo.
 //
 // IMPORTANT: this queries `p.name`/`p.age` rather than the whole node `p`
 // (which is what the post's own snippet returns). Returning the whole node
@@ -29,7 +31,7 @@ const port = mustEnv('GEODE_PORT');
 const user = encodeURIComponent(mustEnv('GEODE_USER'));
 const pass = encodeURIComponent(mustEnv('GEODE_PASSWORD'));
 
-const dsn = `quic://${host}:${port}?insecure_tls_skip_verify=true&user=${user}&pass=${pass}`;
+const dsn = `quic://${user}:${pass}@${host}:${port}?insecure_tls_skip_verify=true`;
 
 const client = await createClient(dsn);
 

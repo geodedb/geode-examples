@@ -4,17 +4,39 @@
 //
 // The post's own snippet (`geode.Client.init(allocator, "localhost", 3141)`,
 // `client.query(...)` returning a `result` you `.deinit()`) does not match
-// the real (alpha) client's public API: there is no `geode.Client` type (the
-// module exports `GeodeClient`), `init` alone does not take credentials (use
-// `initWithTransport`, confirmed against the client's own integration test
-// suite, not its README quick start -- the two disagree), and a handshake
-// (`connect()` + `sendHello()`) is required before querying. See
-// ../FINDINGS.md for the full story.
+// the real (alpha) client's public API at all: there is no `geode.Client`
+// type (the module exports `GeodeClient`).
+//
+// This file uses the client's own README-documented construction pattern --
+// `Config` + `.withCredentials()` + passing the built `Config` to the
+// client -- NOT the lower-level `GeodeClient.initWithTransport(...)` used in
+// an earlier version of this example. Reconciled against the README with
+// two real discrepancies found and worked around (see ../FINDINGS.md
+// section 5 for the full story and the actual compiler errors):
+//
+//   1. The README's Quick Start calls `GeodeClient.init(allocator, host,
+//      port, insecure)` (4 args, no credentials). The installed client
+//      (geode-client-zig 0.3.6) requires `init(allocator, host, port,
+//      insecure, username, password)` (6 args) -- confirmed by compiling
+//      the README's exact snippet, which fails with "expected 6
+//      argument(s), found 4".
+//   2. The README's Config example calls `cfg.withHost(...)`,
+//      `cfg.withPort(...)`, and `cfg.withCredentials("admin", "secret")`
+//      (2 args). The installed client has no `withHost`/`withPort` methods
+//      at all (use `Config.initWithHost(host, port)` instead), and the real
+//      `withCredentials` signature is `withCredentials(self, allocator,
+//      username, password) !*Config` -- it needs an allocator and returns
+//      an error union, unlike the README's example.
+//
+// Once corrected for the real signatures, the Config/withCredentials/
+// GeodeClient.initFromConfig() path -- which IS the README's documented
+// approach in spirit, just not its literal syntax -- works correctly
+// against a live server.
 
 const std = @import("std");
 const geode_client = @import("geode_client");
 const GeodeClient = geode_client.GeodeClient;
-const Transport = geode_client.config.Transport;
+const Config = geode_client.config.Config;
 
 fn mustEnv(name: [*:0]const u8) []const u8 {
     if (std.c.getenv(name)) |v| return std.mem.span(v);
@@ -32,15 +54,16 @@ pub fn main() !void {
     const username = mustEnv("GEODE_USER");
     const password = mustEnv("GEODE_PASSWORD");
 
-    var client = try GeodeClient.initWithTransport(
-        allocator,
-        host,
-        port,
-        true, // insecure: skip TLS verification -- self-signed dev cert
-        username,
-        password,
-        Transport.quic,
-    );
+    // Config.initWithHost(host, port) replaces the README's nonexistent
+    // cfg.withHost(...)/cfg.withPort(...) calls.
+    var cfg = Config.initWithHost(host, port);
+    defer cfg.deinit(allocator);
+    // Real signature takes an allocator and returns !*Config (README's
+    // example omits both).
+    _ = try cfg.withCredentials(allocator, username, password);
+    _ = cfg.withInsecure(true); // self-signed dev cert -- see bootstrap.sh
+
+    var client = try GeodeClient.initFromConfig(allocator, cfg);
     defer client.deinit();
 
     try client.connect();
