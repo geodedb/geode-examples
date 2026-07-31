@@ -1,0 +1,28 @@
+// Every CREATE (UNIQUE) INDEX statement from the "Building a Social
+// Network with Geode" post's "Step 1: Create Unique Indexes" and
+// "Step 2: Create Indexes" sections, verbatim (statement-terminating
+// semicolons added -- the post's own code blocks don't have them, but
+// the CLI's --file mode needs them to separate statements).
+//
+// See ../FINDINGS.md for what happened running this for real, in
+// particular whether `Group` (used in `group_id_unique`) is a reserved
+// word in this GQL dialect.
+
+CREATE UNIQUE INDEX user_id_unique       ON User(id);
+CREATE UNIQUE INDEX user_username_unique ON User(username);
+CREATE UNIQUE INDEX user_email_unique    ON User(email);
+CREATE UNIQUE INDEX post_id_unique       ON Post(id);
+CREATE UNIQUE INDEX comment_id_unique    ON Comment(id);
+CREATE UNIQUE INDEX group_id_unique      ON Group(id);
+
+CREATE INDEX user_username   ON User(username) USING hash;
+CREATE INDEX user_email      ON User(email)    USING hash;
+CREATE INDEX user_created_at ON User(created_at);
+
+CREATE INDEX post_created_at ON Post(created_at);
+CREATE INDEX post_visibility ON Post(visibility) USING hash;
+
+CREATE INDEX comment_created_at ON Comment(created_at);
+
+CREATE INDEX user_search ON User(username, display_name, bio) USING fulltext;
+CREATE INDEX post_search ON Post(content) USING fulltext;

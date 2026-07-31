@@ -1,0 +1,79 @@
+// The "Building a Social Network with Geode" post's "Step 3: Sample
+// Data" block, verbatim (already wrapped in BEGIN/COMMIT in the post --
+// kept as-is).
+
+BEGIN
+
+// Create users
+CREATE (:User {
+  id: 1,
+  username: "alice",
+  email: "alice@example.com",
+  display_name: "Alice Johnson",
+  bio: "Software engineer and coffee enthusiast",
+  created_at: timestamp()
+})
+
+CREATE (:User {
+  id: 2,
+  username: "bob",
+  email: "bob@example.com",
+  display_name: "Bob Smith",
+  bio: "Photographer and traveler",
+  created_at: timestamp()
+})
+
+CREATE (:User {
+  id: 3,
+  username: "charlie",
+  email: "charlie@example.com",
+  display_name: "Charlie Davis",
+  bio: "Designer and artist",
+  created_at: timestamp()
+})
+
+// Create friendships
+MATCH (alice:User {username: "alice"})
+MATCH (bob:User {username: "bob"})
+CREATE (alice)-[:FRIENDS_WITH {since: timestamp()}]->(bob)
+CREATE (bob)-[:FRIENDS_WITH {since: timestamp()}]->(alice)
+
+MATCH (bob:User {username: "bob"})
+MATCH (charlie:User {username: "charlie"})
+CREATE (bob)-[:FRIENDS_WITH {since: timestamp()}]->(charlie)
+CREATE (charlie)-[:FRIENDS_WITH {since: timestamp()}]->(bob)
+
+// Create posts
+MATCH (alice:User {username: "alice"})
+CREATE (alice)-[:POSTED {timestamp: timestamp()}]->(:Post {
+  id: 1,
+  content: "Just deployed my first app with Geode! 🚀",
+  visibility: "public",
+  created_at: timestamp()
+})
+
+MATCH (bob:User {username: "bob"})
+CREATE (bob)-[:POSTED {timestamp: timestamp()}]->(:Post {
+  id: 2,
+  content: "Beautiful sunset at the beach today",
+  image_url: "https://example.com/sunset.jpg",
+  visibility: "public",
+  created_at: timestamp()
+})
+
+// Create comments
+MATCH (bob:User {username: "bob"})
+MATCH (post:Post {id: 1})
+CREATE (bob)-[:COMMENTED {timestamp: timestamp()}]->(comment:Comment {
+  id: 1,
+  content: "Congrats! How do you like it so far?",
+  created_at: timestamp()
+})
+CREATE (comment)-[:ON]->(post)
+
+// Create likes
+MATCH (charlie:User {username: "charlie"})
+MATCH (post:Post {id: 1})
+CREATE (charlie)-[:LIKES {timestamp: timestamp()}]->(post)
+
+COMMIT
