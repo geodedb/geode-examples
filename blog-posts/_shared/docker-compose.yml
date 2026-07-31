@@ -32,6 +32,34 @@ services:
     - 50051:50051/tcp
     - 9090:9090/tcp
     healthcheck:
+      # Overrides the image's own baked-in HEALTHCHECK (docker/health-
+      # check.sh), which runs an unauthenticated `geode query ... --insecure`
+      # every 5s by default. Two compounding problems make that unusable
+      # for this shared container specifically, both documented in
+      # blog-posts/*/FINDINGS.md:
+      #   1. GEODE_ALLOW_INSECURE_TLS=1 unblocks the --insecure flag but the
+      #      query still needs real credentials — connecting with none
+      #      fails auth every single tick (_shared/FINDINGS.md section 1).
+      #   2. Authenticating it properly (GEODE_USERNAME/GEODE_PASSWORD env
+      #      vars the script itself supports) doesn't work either: this
+      #      server's password policy requires a multi-word passphrase
+      #      (see _shared/FINDINGS.md section 2), but health-check.sh
+      #      builds its args as `AUTH_ARGS="$AUTH_ARGS -P $GEODE_PASSWORD"`
+      #      and expands `$AUTH_ARGS` UNQUOTED — a passphrase containing
+      #      spaces gets word-split into several bogus arguments, so the
+      #      password never actually authenticates correctly either way.
+      # Worse than a merely-broken healthcheck: every one of those failed
+      # attempts (auth or not) counts against the server's shared auth
+      # rate limiter. Once anything trips that limiter, the healthcheck's
+      # own perpetual every-5-second failures keep re-tripping it forever
+      # — confirmed it does not clear on its own no matter how long you
+      # wait (blog-posts/building-social-network/FINDINGS.md section 11:
+      # FailingStreak in the high hundreds, unhealthy indefinitely).
+      # bootstrap.sh never depends on Docker's health status anyway — it
+      # waits for the real QUIC-listening log line instead — so replace
+      # the test with a network-free liveness check that can't contribute
+      # rate-limit pressure at all.
+      test: [CMD, /usr/local/bin/geode, --version]
       interval: 5s
       timeout: 5s
       start_period: 15s
