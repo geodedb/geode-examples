@@ -30,9 +30,9 @@ cache:
 
 # Default job configuration
 default:
-  image: docker:24.0
+  image: docker:29.7
   services:
-    - docker:24.0-dind
+    - docker:29.7-dind
   before_script:
     - apk add --no-cache make bash curl
   tags:
@@ -59,7 +59,7 @@ build:docker:
 
 .geode-service:
   services:
-    - name: docker:24.0-dind
+    - name: docker:29.7-dind
   before_script:
     - apk add --no-cache make bash curl python3 py3-pip
     - pip3 install --break-system-packages pytest pytest-asyncio pyyaml
@@ -127,7 +127,7 @@ test:gql:transactions:
 
 test:client:go:
   stage: test-clients
-  image: golang:1.24
+  image: golang:1.27
   extends: .geode-service
   script:
     - |
@@ -148,7 +148,7 @@ test:client:go:
 
 test:client:python:
   stage: test-clients
-  image: python:3.12
+  image: python:3.14
   extends: .geode-service
   script:
     - |
@@ -170,7 +170,7 @@ test:client:python:
 
 test:client:rust:
   stage: test-clients
-  image: rust:1.75
+  image: rust:1.98
   extends: .geode-service
   script:
     - |
@@ -191,7 +191,7 @@ test:client:rust:
 
 test:client:nodejs:
   stage: test-clients
-  image: node:20-alpine
+  image: node:26-alpine
   extends: .geode-service
   script:
     - |
@@ -215,7 +215,7 @@ test:client:nodejs:
 
 test:client:zig:
   stage: test-clients
-  image: debian:bookworm
+  image: debian:trixie
   extends: .geode-service
   script:
     - apt-get update && apt-get install -y wget xz-utils
@@ -497,7 +497,7 @@ verify:claims:
 
 verify:extract-claims:
   stage: verify
-  image: python:3.12-alpine
+  image: python:3.14-alpine
   script:
     - apk add --no-cache bash git
     - mkdir -p reports docs
@@ -526,7 +526,7 @@ verify:extract-claims:
 
 verify:canary:
   stage: verify
-  image: alpine:3.19
+  image: alpine:3.24
   script:
     - apk add --no-cache bash grep coreutils bc
     - mkdir -p docs
@@ -545,7 +545,7 @@ verify:canary:
 
 report:html:
   stage: report
-  image: python:3.12-alpine
+  image: python:3.14-alpine
   script:
     - apk add --no-cache bash jq bc
     - mkdir -p public reports
