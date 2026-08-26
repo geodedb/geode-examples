@@ -22,13 +22,17 @@ services:
       - "127.0.0.1:3141:3141"   # QUIC server port
       - "127.0.0.1:9090:9090"   # Prometheus metrics
     volumes:
-      - geode-data:/var/lib/geode
-      - geode-logs:/var/log/geode
+      # /data is the directory the official image prepares (mkdir+chown
+      # geode:geode, VOLUME) — the container runs as the non-root geode
+      # user with cap_drop ALL, so any other mount point (e.g.
+      # /var/lib/geode) is root-owned and unwritable, crash-looping the
+      # server on "Can't open server.key for writing".
+      - geode-data:/data
       - ./certs:/certs:ro
     environment:
       - GEODE_LOG_LEVEL=info
-      - GEODE_DATA_DIR=/var/lib/geode
-    command: ["serve", "--data-dir", "/var/lib/geode", "--listen", "0.0.0.0:3141", "--log-level", "info", "--disable-auth"]
+      - GEODE_DATA_DIR=/data
+    command: ["serve", "--data-dir", "/data", "--listen", "0.0.0.0:3141", "--log-level", "info", "--disable-auth"]
     healthcheck:
       test: ["CMD", "geode", "query", "--server", "localhost:3141", "--insecure", "RETURN 1"]
       interval: 10s
@@ -162,7 +166,6 @@ services:
 volumes:
   geode-data:
     driver: local
-  geode-logs:
     driver: local
   prometheus-data:
     driver: local
