@@ -27,14 +27,6 @@ stages:
 # Global variables
 variables:
   GEODE_IMAGE: "geodedb/geode:latest"
-  # TLS dind recipe (mirrors the geode engine's working release job):
-  # the daemon generates certs under the shared /certs volume and
-  # listens on 2376; the plaintext tcp://docker:2375 setup never came
-  # up on the lab runners.
-  DOCKER_HOST: tcp://docker:2376
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_TLS_VERIFY: "1"
-  DOCKER_CERT_PATH: "/certs/client"
   FF_NETWORK_PER_BUILD: "true"
   SECRET_DETECTION_ENABLED: "true"
 
@@ -46,26 +38,20 @@ cache:
 
 # Default job configuration
 default:
-  # docker 24.0 client+dind: 29.7-dind never becomes ready on the
-  # shared runners (daemon unreachable after 60s), verified 2026-08-26.
   image: docker:24.0
-  services:
-    - docker:24.0-dind
+  # Socket-binding mode: the lab runners mount the host's
+  # /var/run/docker.sock into every container (which is also why a dind
+  # service can never bind its own socket there — "device or resource
+  # busy"). Talk to the host daemon directly; no dind service.
   before_script:
     - apk add --no-cache make bash curl
-    # docker 29.x dind takes noticeably longer to accept connections
-    # than 24.x did; without this wait the first docker command races
-    # the daemon and fails with "Cannot connect to the Docker daemon".
     - |
       for i in $(seq 1 60); do
         if docker info >/dev/null 2>&1; then break; fi
         sleep 1
       done
       docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
-  # docker:dind only works on the Lab Servers runner pool (tags
-  # company+lab+linux) — the default company/linux cluster runners are
-  # not privileged, so the dind service daemon never starts (see the
-  # runner pool map in geode/.gitlab-ci.yml).
+  # The lab runner pool mounts the host docker socket; keep these tags.
   tags:
     - company
     - lab
@@ -77,12 +63,6 @@ default:
 
 build:docker:
   stage: build
-  variables:
-    # Surface the dind service container's own logs in this job's trace
-    # so daemon startup failures are diagnosable. Scoped to this single
-    # job (not global) so service logs cannot leak env/credentials from
-    # other jobs; remove once dind is stable.
-    CI_DEBUG_SERVICES: "true"
   script:
     - docker compose build
     - docker compose up -d geode
@@ -97,8 +77,6 @@ build:docker:
 # =============================================================================
 
 .geode-service:
-  services:
-    - name: docker:24.0-dind
   before_script:
     - apk add --no-cache make bash curl python3 py3-pip
     - pip3 install --break-system-packages pytest pytest-asyncio pyyaml
