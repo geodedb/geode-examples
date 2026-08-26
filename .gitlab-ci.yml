@@ -35,9 +35,6 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_TLS_VERIFY: "1"
   DOCKER_CERT_PATH: "/certs/client"
-  # Surface the dind service container's own logs in the job trace so
-  # daemon startup failures are diagnosable (remove once dind is stable).
-  CI_DEBUG_SERVICES: "true"
   FF_NETWORK_PER_BUILD: "true"
   SECRET_DETECTION_ENABLED: "true"
 
@@ -80,6 +77,12 @@ default:
 
 build:docker:
   stage: build
+  variables:
+    # Surface the dind service container's own logs in this job's trace
+    # so daemon startup failures are diagnosable. Scoped to this single
+    # job (not global) so service logs cannot leak env/credentials from
+    # other jobs; remove once dind is stable.
+    CI_DEBUG_SERVICES: "true"
   script:
     - docker compose build
     - docker compose up -d geode
