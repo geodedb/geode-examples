@@ -27,8 +27,14 @@ stages:
 # Global variables
 variables:
   GEODE_IMAGE: "geodedb/geode:latest"
-  DOCKER_HOST: tcp://docker:2375
-  DOCKER_TLS_CERTDIR: ""
+  # TLS dind recipe (mirrors the geode engine's working release job):
+  # the daemon generates certs under the shared /certs volume and
+  # listens on 2376; the plaintext tcp://docker:2375 setup never came
+  # up on the lab runners.
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: "1"
+  DOCKER_CERT_PATH: "/certs/client"
   FF_NETWORK_PER_BUILD: "true"
   SECRET_DETECTION_ENABLED: "true"
 
