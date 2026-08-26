@@ -46,11 +46,15 @@ default:
   before_script:
     - apk add --no-cache make bash curl
     - |
-      for i in $(seq 1 60); do
-        if docker info >/dev/null 2>&1; then break; fi
-        sleep 1
-      done
-      docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
+      # Only docker-based jobs need the daemon; report/utility jobs use
+      # images without the docker CLI and must not fail this gate.
+      if command -v docker >/dev/null 2>&1; then
+        for i in $(seq 1 60); do
+          if docker info >/dev/null 2>&1; then break; fi
+          sleep 1
+        done
+        docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
+      fi
   # The lab runner pool mounts the host docker socket; keep these tags.
   tags:
     - company
