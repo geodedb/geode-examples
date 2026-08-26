@@ -590,9 +590,15 @@ report:html:
 
 pages:
   stage: report
+  # Publish the HTML report: without `needs`, this job got an EMPTY
+  # public/ (its old cp was a self-referential no-op) and GitLab's
+  # internal pages:deploy failed the whole pipeline with "include a
+  # public/ folder in your artifacts".
+  needs:
+    - job: report:html
+      artifacts: true
   script:
-    - mkdir -p public
-    - cp -r public/* public/ 2>/dev/null || true
+    - test -f public/index.html || { mkdir -p public; echo "<html><body>report:html produced no index</body></html>" > public/index.html; }
   artifacts:
     paths:
       - public
