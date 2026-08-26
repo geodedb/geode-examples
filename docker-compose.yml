@@ -166,7 +166,6 @@ services:
 volumes:
   geode-data:
     driver: local
-    driver: local
   prometheus-data:
     driver: local
   grafana-data:
