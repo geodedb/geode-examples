@@ -35,6 +35,9 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_TLS_VERIFY: "1"
   DOCKER_CERT_PATH: "/certs/client"
+  # Surface the dind service container's own logs in the job trace so
+  # daemon startup failures are diagnosable (remove once dind is stable).
+  CI_DEBUG_SERVICES: "true"
   FF_NETWORK_PER_BUILD: "true"
   SECRET_DETECTION_ENABLED: "true"
 
