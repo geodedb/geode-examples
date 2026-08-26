@@ -64,10 +64,17 @@ default:
 build:docker:
   stage: build
   script:
+    # A previous job's crash-looping container (fixed container_name +
+    # restart: unless-stopped) survives on the shared host daemon and
+    # blocks/poisons this run — remove it first.
+    - docker compose down -v --remove-orphans || true
     - docker compose build
     - docker compose up -d geode
     - sleep 10
-    - docker compose exec -T geode geode query --server localhost:3141 --insecure "RETURN 1"
+    - docker compose exec -T geode geode query --server localhost:3141 --insecure "RETURN 1" || { docker compose ps; docker compose logs geode; exit 1; }
+  after_script:
+    # Never leave containers behind on the shared host daemon.
+    - docker compose down -v --remove-orphans || true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
