@@ -1,6 +1,6 @@
 module geode-examples/blog-posts/introducing-geode/go
 
-go 1.25.0
+go 1.27.0
 
 require geodedb.com/geode v0.1.28
 
