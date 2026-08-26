@@ -32,9 +32,12 @@ services:
     environment:
       - GEODE_LOG_LEVEL=info
       - GEODE_DATA_DIR=/data
-    command: ["serve", "--data-dir", "/data", "--listen", "0.0.0.0:3141", "--log-level", "info", "--disable-auth"]
+      # Test-only credential (release builds always require auth —
+      # --disable-auth is not honored); override for other environments.
+      - GEODE_ADMIN_PASSWORD=${GEODE_ADMIN_PASSWORD:-GeodeTestPassword123!}
+    command: ["serve", "--data-dir", "/data", "--listen", "0.0.0.0:3141", "--log-level", "info"]
     healthcheck:
-      test: ["CMD", "geode", "query", "--server", "localhost:3141", "--ca-cert", "/data/server.crt", "RETURN 1"]
+      test: ["CMD-SHELL", "geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P \"$$GEODE_ADMIN_PASSWORD\" 'RETURN 1'"]
       interval: 10s
       timeout: 5s
       retries: 5
