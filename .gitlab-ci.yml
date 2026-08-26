@@ -35,6 +35,15 @@ default:
     - docker:29.7-dind
   before_script:
     - apk add --no-cache make bash curl
+    # docker 29.x dind takes noticeably longer to accept connections
+    # than 24.x did; without this wait the first docker command races
+    # the daemon and fails with "Cannot connect to the Docker daemon".
+    - |
+      for i in $(seq 1 60); do
+        if docker info >/dev/null 2>&1; then break; fi
+        sleep 1
+      done
+      docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
   tags:
     - company
 
