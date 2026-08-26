@@ -46,8 +46,14 @@ default:
         sleep 1
       done
       docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
+  # docker:dind only works on the Lab Servers runner pool (tags
+  # company+lab+linux) — the default company/linux cluster runners are
+  # not privileged, so the dind service daemon never starts (see the
+  # runner pool map in geode/.gitlab-ci.yml).
   tags:
     - company
+    - lab
+    - linux
 
 # =============================================================================
 # Build Stage
