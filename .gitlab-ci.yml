@@ -3,6 +3,16 @@
 # This pipeline verifies ALL claims made in geodedb.com documentation
 # through automated testing against a black-box Geode instance.
 
+# Fork protection: jobs here run on the privileged lab runner pool
+# (docker:dind), so never execute pipelines for MRs from forks —
+# untrusted code must not reach privileged runners. Same-project MRs,
+# main, tags, web and scheduled runs are unaffected.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID != $CI_PROJECT_ID
+      when: never
+    - when: always
+
 stages:
   - build
   - test-gql
