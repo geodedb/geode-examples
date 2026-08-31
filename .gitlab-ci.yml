@@ -38,7 +38,7 @@ cache:
 
 # Default job configuration
 default:
-  image: docker:24.0
+  image: docker:29.7
   # Socket-binding mode: the lab runners mount the host's
   # /var/run/docker.sock into every container (which is also why a dind
   # service can never bind its own socket there — "device or resource
