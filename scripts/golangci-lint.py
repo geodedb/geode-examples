@@ -51,7 +51,12 @@ def main():
             if expected not in installed_version:
                 raise RuntimeError("installed linter does not match the requested Go/linter pair")
             os.replace(installed, binary)
-    return subprocess.run([str(binary), *sys.argv[1:]], env=env).returncode
+    args = sys.argv[1:]
+    # golangci-lint's default lock is host-wide, even across unrelated repos.
+    # The caches support concurrent runners; retain explicit caller overrides.
+    if args and args[0] == "run" and not any(a.startswith("--allow-parallel-runners") for a in args):
+        args = [args[0], "--allow-parallel-runners", *args[1:]]
+    return subprocess.run([str(binary), *args], env=env).returncode
 
 
 if __name__ == "__main__":

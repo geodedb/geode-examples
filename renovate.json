@@ -64,7 +64,8 @@
       "matchStrings": [
         "(?:GO_VERSION|GO_VERSIONS|go_version|GOTOOLCHAIN|DESKTOP_GO_VERSION|GOVERSION)[ \\t?]*[=:][ \\t\"\\x27\\[]*(?:go)?(?<currentValue>1\\.\\d+\\.\\d+)",
         "go_version:\\s+default: [\"\\x27]?(?<currentValue>1\\.\\d+\\.\\d+)",
-        "golang:[ \\t\"\\x27]*(?<currentValue>1\\.\\d+\\.\\d+)"
+        "golang:[ \\t\"\\x27]*(?<currentValue>1\\.\\d+\\.\\d+)",
+        "GOTOOLCHAIN[^\\n]*?[=:][^\\n]*?go(?<currentValue>1\\.\\d+\\.\\d+)"
       ],
       "depNameTemplate": "go",
       "datasourceTemplate": "golang-version",
