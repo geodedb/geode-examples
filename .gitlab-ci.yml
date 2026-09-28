@@ -60,14 +60,7 @@ default:
       fi
   # The lab runner pool mounts the host docker socket; keep these tags.
   tags:
-    - company
-    - lab
-    - linux
-
-# =============================================================================
-# Build Stage
-# =============================================================================
-
+    [company, lab, linux, x86]
 build:docker:
   stage: build
   script:
