@@ -158,7 +158,7 @@ test:gql:transactions:
 
 test:client:go:
   stage: test-clients
-  image: golang:1.27
+  image: golang:1.27.1
   extends: .geode-service
   script:
     - |
