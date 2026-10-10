@@ -59,8 +59,12 @@ default:
         docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
       fi
   # The lab runner pool mounts the host docker socket; keep these tags.
+  # `amd64` targets the Lab Servers runner (haleth + lothiriel, host
+  # docker.sock mounted). The Incus cluster runner, the only one carrying
+  # `x86` + `lab`, has been paused since 2026-09-29, which left every job
+  # here stuck_pending_no_matching_runners.
   tags:
-    [company, lab, linux, x86]
+    [company, lab, linux, amd64]
 build:docker:
   stage: build
   script:
