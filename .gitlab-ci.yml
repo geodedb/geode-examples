@@ -38,7 +38,7 @@ cache:
 
 # Default job configuration
 default:
-  image: docker:29.8
+  image: docker:29.9
   # Socket-binding mode: the lab runners mount the host's
   # /var/run/docker.sock into every container (which is also why a dind
   # service can never bind its own socket there — "device or resource
@@ -151,7 +151,7 @@ test:gql:transactions:
 
 test:client:go:
   stage: test-clients
-  image: golang:1.27.1
+  image: golang:1.27.2
   extends: .geode-service
   script:
     - |
@@ -194,7 +194,7 @@ test:client:python:
 
 test:client:rust:
   stage: test-clients
-  image: rust:1.98
+  image: rust:1.99
   extends: .geode-service
   script:
     - |
@@ -243,9 +243,9 @@ test:client:zig:
   extends: .geode-service
   script:
     - apt-get update && apt-get install -y wget xz-utils
-    - wget -q https://ziglang.org/download/0.15.0/zig-linux-x86_64-0.15.0.tar.xz
-    - tar -xf zig-linux-x86_64-0.15.0.tar.xz
-    - export PATH="$PWD/zig-linux-x86_64-0.15.0:$PATH"
+    - wget -q https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+    - tar -xf zig-x86_64-linux-0.16.0.tar.xz
+    - export PATH="$PWD/zig-x86_64-linux-0.16.0:$PATH"
     - |
       if [ -f clients/zig/build.zig ]; then
         cd clients/zig

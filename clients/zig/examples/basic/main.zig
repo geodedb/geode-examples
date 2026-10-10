@@ -41,7 +41,7 @@ const GeodeClient = struct {
         std.debug.print("  Executing: {s}...\n", .{query[0..display_len]});
 
         // Simulate query execution
-        std.Thread.sleep(1_000_000); // 1ms
+        std.Io.sleep(std.Io.Threaded.global_single_threaded.io(), .fromMilliseconds(1), .awake) catch {}; // 1ms
     }
 
     pub fn close(self: *Self) void {
