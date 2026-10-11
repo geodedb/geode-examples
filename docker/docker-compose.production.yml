@@ -127,7 +127,7 @@ services:
 
   # Grafana for visualization
   grafana:
-    image: grafana/grafana:13.2.2
+    image: grafana/grafana:13.2.3
     container_name: geode-production-grafana
     security_opt:
       - no-new-privileges:true
