@@ -8,6 +8,10 @@
 # untrusted code must not reach privileged runners. Same-project MRs,
 # main, tags, web and scheduled runs are unaffected.
 workflow:
+  # SRE-172: a newer commit on the same ref cancels the superseded pipeline's
+  # interruptible (validation) jobs. Pages stays non-interruptible.
+  auto_cancel:
+    on_new_commit: interruptible
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID != $CI_PROJECT_ID
       when: never
@@ -66,6 +70,7 @@ default:
   tags:
     [company, lab, linux, amd64]
 build:docker:
+  interruptible: true
   stage: build
   script:
     # A previous job's crash-looping container (fixed container_name +
@@ -88,6 +93,7 @@ build:docker:
 # =============================================================================
 
 .geode-service:
+  interruptible: true
   before_script:
     - apk add --no-cache make bash curl python3 py3-pip
     - pip3 install --break-system-packages pytest pytest-asyncio pyyaml
@@ -524,6 +530,7 @@ verify:claims:
   allow_failure: true
 
 verify:extract-claims:
+  interruptible: true
   stage: verify
   image: python:3.15-alpine
   script:
@@ -553,6 +560,7 @@ verify:extract-claims:
   allow_failure: true
 
 verify:canary:
+  interruptible: true
   stage: verify
   image: alpine:3.24
   script:
@@ -572,6 +580,7 @@ verify:canary:
 # =============================================================================
 
 report:html:
+  interruptible: true
   stage: report
   image: python:3.15-alpine
   script:
@@ -586,6 +595,7 @@ report:html:
     - if: $CI_COMMIT_BRANCH == "main"
 
 pages:
+  interruptible: false
   stage: report
   # Publish the HTML report: without `needs`, this job got an EMPTY
   # public/ (its old cp was a self-referential no-op) and GitLab's
@@ -610,8 +620,13 @@ include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
 
+# SRE-172: the SAST analyzers are read-only validation.
+.sast-analyzer:
+  interruptible: true
+
 sast:
   stage: test-gql
 
 secret_detection:
+  interruptible: true
   stage: secret-detection
