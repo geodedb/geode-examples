@@ -8,6 +8,8 @@
 # untrusted code must not reach privileged runners. Same-project MRs,
 # main, tags, web and scheduled runs are unaffected.
 workflow:
+  auto_cancel:
+    on_job_failure: all
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID != $CI_PROJECT_ID
       when: never
