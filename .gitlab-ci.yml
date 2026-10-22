@@ -41,9 +41,7 @@ default:
   # service can never bind its own socket there — "device or resource
   # busy"). Talk to the host daemon directly; no dind service.
   before_script:
-    # Policy-injected scanner jobs inherit this default before_script but
-    # run non-root images where apk cannot lock its database; tolerate
-    # that instead of failing jobs that never needed the packages.
+    # Install packages only when the job can modify its image.
     - apk add --no-cache make bash curl 2>/dev/null || echo "skipping package install (non-root or non-alpine image)"
     - |
       # Only docker-based jobs need the daemon; report/utility jobs use
