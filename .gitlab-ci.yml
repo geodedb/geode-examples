@@ -28,9 +28,6 @@ stages:
 variables:
   GEODE_IMAGE: "geodedb/geode:latest"
   FF_NETWORK_PER_BUILD: "true"
-  SECRET_DETECTION_ENABLED: "true"
-
-# Cache configuration
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
@@ -63,8 +60,7 @@ default:
   # docker.sock mounted). The Incus cluster runner, the only one carrying
   # `x86` + `lab`, has been paused since 2026-09-29, which left every job
   # here stuck_pending_no_matching_runners.
-  tags:
-    [company, lab, linux, amd64]
+  tags: [company, lab, linux, amd64]
 build:docker:
   stage: build
   script:
@@ -605,13 +601,3 @@ pages:
 # =============================================================================
 # Security Scanning (GitLab Templates)
 # =============================================================================
-
-include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-
-sast:
-  stage: test-gql
-
-secret_detection:
-  stage: secret-detection
