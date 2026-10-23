@@ -96,11 +96,14 @@ run_gql_tests() {
         for gql_file in "${PROJECT_ROOT}"/gql/**/*.gql; do
             if [ -f "$gql_file" ]; then
                 filename=$(basename "$gql_file")
-                if timeout 30 bash "${SCRIPT_DIR}/geode-query.sh" "$(cat "$gql_file")" &> /dev/null; then
+                relative_file=${gql_file#"${PROJECT_ROOT}/gql/"}
+                output="${REPORTS_DIR}/gql/${relative_file}.log"
+                mkdir -p "$(dirname "$output")"
+                if timeout 30 bash "${SCRIPT_DIR}/geode-query.sh" --file "$gql_file" > "$output" 2>&1; then
                     log_success "$filename"
                     PASSED=$((PASSED + 1))
                 else
-                    log_fail "$filename"
+                    log_fail "$relative_file (see $output)"
                     FAILED=$((FAILED + 1))
                 fi
             fi

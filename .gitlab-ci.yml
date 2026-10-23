@@ -45,6 +45,7 @@ build:docker:
   stage: build
   extends: .geode-service
   script:
+  - python3 scripts/test_geode_response.py
   - bash scripts/geode-query.sh "RETURN 1"
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
