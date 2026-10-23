@@ -6,6 +6,7 @@
 # Categories: gql, clients, features, security, performance
 
 set -euo pipefail
+shopt -s globstar nullglob
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -95,7 +96,7 @@ run_gql_tests() {
         for gql_file in "${PROJECT_ROOT}"/gql/**/*.gql; do
             if [ -f "$gql_file" ]; then
                 filename=$(basename "$gql_file")
-                if timeout 30 geode shell -h "$GEODE_HOST" < "$gql_file" &> /dev/null; then
+                if timeout 30 bash "${SCRIPT_DIR}/geode-query.sh" "$(cat "$gql_file")" &> /dev/null; then
                     log_success "$filename"
                     PASSED=$((PASSED + 1))
                 else
@@ -113,101 +114,15 @@ run_gql_tests() {
 run_client_tests() {
     log_section "Client Library Tests"
 
-    # Go client (build verification - examples don't have test files)
-    if [ -f "${PROJECT_ROOT}/clients/go/go.mod" ]; then
-        echo "Running Go client tests..."
-        if [ "$VERBOSE" = true ]; then
-            echo "  Building Go examples..."
-            go_examples=$(cd "${PROJECT_ROOT}/clients/go" && find examples -name "main.go" | wc -l)
-            echo "  Found ${go_examples} Go example programs"
-        fi
-        if (cd "${PROJECT_ROOT}/clients/go" && go build ./... > "${REPORTS_DIR}/go-tests.log" 2>&1); then
-            if [ "$VERBOSE" = true ]; then
-                echo "  ✓ basic_connection/main.go"
-                echo "  ✓ transactions/main.go"
-                echo "  ✓ prepared_statements/main.go"
-                echo "  ✓ connection_pooling/main.go"
-            fi
-            log_success "Go client tests"
+    for language in go python rust nodejs zig; do
+        if bash "${SCRIPT_DIR}/test-client.sh" "$language"; then
+            log_success "$language client examples"
             PASSED=$((PASSED + 1))
         else
-            log_fail "Go client tests (see reports/go-tests.log)"
+            log_fail "$language client examples (see reports/$language-tests.log)"
             FAILED=$((FAILED + 1))
         fi
-    else
-        log_skip "Go client not configured"
-        SKIPPED=$((SKIPPED + 1))
-    fi
-
-    # Python client (build verification)
-    if [ -f "${PROJECT_ROOT}/clients/python/requirements.txt" ]; then
-        echo "Running Python client tests..."
-        if [ "$VERBOSE" = true ]; then
-            echo "  Syntax checking Python examples..."
-            py_files=$(cd "${PROJECT_ROOT}/clients/python" && find examples -name "*.py" | wc -l)
-            echo "  Found ${py_files} Python files"
-        fi
-        # Find all Python files and syntax check them
-        if (cd "${PROJECT_ROOT}/clients/python" && find examples -name "*.py" -exec $PYTHON -m py_compile {} \; > "${REPORTS_DIR}/python-tests.log" 2>&1); then
-            if [ "$VERBOSE" = true ]; then
-                (cd "${PROJECT_ROOT}/clients/python" && find examples -name "*.py" | sort | while read f; do echo "  ✓ $f"; done)
-            fi
-            log_success "Python client tests"
-            PASSED=$((PASSED + 1))
-        else
-            log_fail "Python client tests (see reports/python-tests.log)"
-            FAILED=$((FAILED + 1))
-        fi
-    else
-        log_skip "Python client not configured"
-        SKIPPED=$((SKIPPED + 1))
-    fi
-
-    # Rust client (build verification - examples use mock implementations)
-    if [ -f "${PROJECT_ROOT}/clients/rust/Cargo.toml" ]; then
-        echo "Running Rust client tests..."
-        if [ "$VERBOSE" = true ]; then
-            echo "  Building Rust examples with cargo..."
-        fi
-        if (cd "${PROJECT_ROOT}/clients/rust" && cargo build --examples > "${REPORTS_DIR}/rust-tests.log" 2>&1); then
-            if [ "$VERBOSE" = true ]; then
-                echo "  ✓ basic_usage"
-                echo "  ✓ high_throughput"
-                echo "  ✓ connection_pool"
-                echo "  ✓ transactions"
-            fi
-            log_success "Rust client tests"
-            PASSED=$((PASSED + 1))
-        else
-            log_fail "Rust client tests (see reports/rust-tests.log)"
-            FAILED=$((FAILED + 1))
-        fi
-    else
-        log_skip "Rust client not configured"
-        SKIPPED=$((SKIPPED + 1))
-    fi
-
-    # Zig client
-    if [ -f "${PROJECT_ROOT}/clients/zig/build.zig" ]; then
-        echo "Running Zig client tests..."
-        if [ "$VERBOSE" = true ]; then
-            echo "  Building Zig examples..."
-        fi
-        if (cd "${PROJECT_ROOT}/clients/zig" && zig build test > "${REPORTS_DIR}/zig-tests.log" 2>&1); then
-            if [ "$VERBOSE" = true ]; then
-                echo "  ✓ basic_example"
-                echo "  ✓ transaction_example"
-            fi
-            log_success "Zig client tests"
-            PASSED=$((PASSED + 1))
-        else
-            log_fail "Zig client tests (see reports/zig-tests.log)"
-            FAILED=$((FAILED + 1))
-        fi
-    else
-        log_skip "Zig client not configured"
-        SKIPPED=$((SKIPPED + 1))
-    fi
+    done
 }
 
 run_feature_tests() {
@@ -360,7 +275,7 @@ echo "Skipped: $SKIPPED"
 echo ""
 
 # Generate summary report
-cat > "${REPORTS_DIR}/summary.json" << EOF
+cat > "${REPORTS_DIR}/summary-${CATEGORY}.json" << EOF
 {
   "timestamp": "$(date -Iseconds)",
   "host": "$GEODE_HOST",

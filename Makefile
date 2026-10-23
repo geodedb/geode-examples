@@ -31,7 +31,7 @@ PUBLIC_DIR ?= public
 PYTHON ?= python3
 
 # Default target
-all: setup test verify report
+all: setup verify report
 
 ##@ Setup
 
@@ -79,6 +79,22 @@ build-zig: ## Build Zig client examples
 ##@ Testing
 
 test: test-gql test-clients test-features ## Run all tests
+
+.PHONY: test-client-go test-client-python test-client-rust test-client-nodejs test-client-zig
+test-client-go:
+	@bash scripts/test-client.sh go
+
+test-client-python:
+	@bash scripts/test-client.sh python
+
+test-client-rust:
+	@bash scripts/test-client.sh rust
+
+test-client-nodejs:
+	@bash scripts/test-client.sh nodejs
+
+test-client-zig:
+	@bash scripts/test-client.sh zig
 
 test-quick: ## Run quick smoke tests
 	@./scripts/run_all_tests.sh --quick
@@ -492,7 +508,8 @@ extract-claims: ## Extract claims from documentation
 
 ##@ Reporting
 
-report: report-json report-html report-badge ## Generate all reports
+report: ## Generate all reports once
+	@./scripts/generate_report.sh --all
 
 report-json: ## Generate JSON verification report
 	@./scripts/generate_report.sh --json
@@ -555,7 +572,7 @@ clean-all: clean clean-docker ## Full cleanup including images
 
 ##@ CI/CD
 
-ci: build test verify report ## Run full CI pipeline
+ci: build verify report ## Run full CI pipeline
 	@echo "CI pipeline complete"
 
 ci-quick: build test-quick ## Run quick CI checks

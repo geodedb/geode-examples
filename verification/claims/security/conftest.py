@@ -4,6 +4,7 @@ Pytest configuration for security claim verification tests.
 
 CANARY: REQ=REQ-TEST-SEC-001; FEATURE="SecurityTestConfig"; ASPECT=Testing; STATUS=TESTED
 """
+from pathlib import Path
 import pytest
 import subprocess
 import time
@@ -22,11 +23,8 @@ class GeodeClient:
         try:
             if self.use_docker:
                 cmd = [
-                    "docker", "compose", "exec", "-T", "geode",
-                    "geode", "query",
-                    "--server", "localhost:3141",
-                    "--insecure",
-                    query
+                    "bash", str(Path(__file__).resolve().parents[3] / "scripts/geode-query.sh"),
+                    query,
                 ]
             else:
                 cmd = [
