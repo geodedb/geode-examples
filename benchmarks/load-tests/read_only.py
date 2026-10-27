@@ -66,16 +66,12 @@ class GeodeShellClient:
         start = time.perf_counter()
         try:
             if self.use_docker:
-                # Use docker compose to run query inside container
-                # Inside container, connect to localhost:3141
+                # Share CI's authenticated, certificate-verified query runner.
+                # It also rejects server errors when the CLI exits zero.
                 cmd = [
-                    "docker", "compose", "exec", "-T", "geode",
-                    "geode", "query",
-                    "--server", "localhost:3141",
+                    "bash", str(Path(__file__).resolve().parents[2] / "scripts/geode-query.sh"),
+                    query,
                 ]
-                if self.insecure:
-                    cmd.append("--insecure")
-                cmd.append(query)
             else:
                 # Use local geode binary with geode query command
                 cmd = [
@@ -94,7 +90,7 @@ class GeodeShellClient:
                 timeout=timeout
             )
             latency = (time.perf_counter() - start) * 1000
-            return result.returncode == 0, latency
+            return result.returncode == 0 and self.valid_response(result.stdout), latency
 
         except subprocess.TimeoutExpired:
             latency = (time.perf_counter() - start) * 1000
@@ -102,6 +98,23 @@ class GeodeShellClient:
         except Exception:
             latency = (time.perf_counter() - start) * 1000
             return False, latency
+
+    def valid_response(self, output: str) -> bool:
+        """Require a successful server response, including for direct connections."""
+        responses = []
+        for line in output.splitlines():
+            if not line.strip().startswith("{"):
+                continue
+            try:
+                response = json.loads(line)
+            except json.JSONDecodeError:
+                return False
+            status = response.get("status_class", "")
+            if status:
+                responses.append(response)
+                if response.get("error") or response.get("error_code") or status[:2] not in ("00", "01", "02"):
+                    return False
+        return bool(responses)
 
 
 async def run_worker(
@@ -117,7 +130,7 @@ async def run_worker(
     start_time = time.monotonic()
 
     while time.monotonic() - start_time < duration_seconds:
-        success, latency = client.execute(query)
+        success, latency = await asyncio.to_thread(client.execute, query)
         results.append((success, latency))
         # Small yield to prevent blocking
         await asyncio.sleep(0)

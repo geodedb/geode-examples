@@ -12,15 +12,17 @@ to verify Geode's claimed performance for vector operations.
 import argparse
 import asyncio
 import json
+import math
 import random
 import statistics
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
+
+from read_only import GeodeShellClient
 
 
 @dataclass
@@ -47,44 +49,37 @@ class VectorBenchmarkResult:
     status: str
 
 
-class GeodeVectorClient:
-    """Geode client for vector operations."""
+class GeodeVectorClient(GeodeShellClient):
+    """Require an actual numeric result, not a successful NULL response."""
 
-    def __init__(self, host: str = "localhost", port: int = 3141, use_docker: bool = True, insecure: bool = True):
-        self.host = host
-        self.port = port
-        self.use_docker = use_docker
-        self.insecure = insecure
+    def valid_response(self, output: str) -> bool:
+        if not super().valid_response(output):
+            return False
+        for line in output.splitlines():
+            if not line.strip().startswith("{"):
+                continue
+            response = json.loads(line)
+            for row in response.get("rows", []):
+                value = row.get("distance")
+                if value is None or isinstance(value, bool):
+                    return False
+                try:
+                    return math.isfinite(float(value))
+                except (ValueError, TypeError):
+                    return False
+        return False
 
-    def execute(self, query: str, timeout: float = 5.0) -> tuple[bool, float]:
-        """Execute a query and return (success, latency_ms)."""
-        start = time.perf_counter()
-        try:
-            if self.use_docker:
-                cmd = [
-                    "docker", "compose", "exec", "-T", "geode",
-                    "geode", "query",
-                    "--server", "localhost:3141",
-                ]
-                if self.insecure:
-                    cmd.append("--insecure")
-                cmd.append(query)
-            else:
-                cmd = [
-                    "geode", "query",
-                    "--server", f"{self.host}:{self.port}",
-                    "--timeout", str(int(timeout)),
-                ]
-                if self.insecure:
-                    cmd.append("--insecure")
-                cmd.append(query)
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            latency = (time.perf_counter() - start) * 1000
-            return result.returncode == 0, latency
-        except Exception:
-            latency = (time.perf_counter() - start) * 1000
-            return False, latency
+def distance_query(distance_type: str, v1: List[float], v2: List[float]) -> str:
+    """Use the same supported functions as the vector feature verification."""
+    functions = {
+        "euclidean": "vector_l2",
+        "cosine": "vector_cosine",
+        "manhattan": "manhattan",
+        "dot_product": "vector_dot",
+    }
+    function = functions[distance_type]
+    return f"RETURN {function}(vectorf32({format_vector(v1)}), vectorf32({format_vector(v2)})) AS distance"
 
 
 def generate_vector(dimensions: int) -> List[float]:
@@ -115,21 +110,7 @@ async def run_benchmark(
     # Generate test vectors
     v1 = generate_vector(dimensions)
     v2 = generate_vector(dimensions)
-    v1_str = format_vector(v1)
-    v2_str = format_vector(v2)
-
-    # Select distance function based on type
-    if distance_type == "euclidean":
-        query = f"RETURN euclidean_distance({v1_str}, {v2_str})"
-    elif distance_type == "cosine":
-        query = f"RETURN cosine_similarity({v1_str}, {v2_str})"
-    elif distance_type == "manhattan":
-        query = f"RETURN manhattan_distance({v1_str}, {v2_str})"
-    elif distance_type == "dot_product":
-        query = f"RETURN dot_product({v1_str}, {v2_str})"
-    else:
-        # Fall back to manual calculation
-        query = f"RETURN sqrt(reduce(sum = 0.0, i IN range(0, {dimensions-1}) | sum + ({v1_str}[i] - {v2_str}[i])^2))"
+    query = distance_query(distance_type, v1, v2)
 
     # Warmup phase
     print(f"  Warming up ({warmup_iterations} iterations)...")
@@ -148,19 +129,7 @@ async def run_benchmark(
         # Generate new vectors for each iteration to avoid caching effects
         v1 = generate_vector(dimensions)
         v2 = generate_vector(dimensions)
-        v1_str = format_vector(v1)
-        v2_str = format_vector(v2)
-
-        if distance_type == "euclidean":
-            query = f"RETURN euclidean_distance({v1_str}, {v2_str})"
-        elif distance_type == "cosine":
-            query = f"RETURN cosine_similarity({v1_str}, {v2_str})"
-        elif distance_type == "manhattan":
-            query = f"RETURN manhattan_distance({v1_str}, {v2_str})"
-        elif distance_type == "dot_product":
-            query = f"RETURN dot_product({v1_str}, {v2_str})"
-        else:
-            query = f"RETURN sqrt(reduce(sum = 0.0, i IN range(0, {dimensions-1}) | sum + ({v1_str}[i] - {v2_str}[i])^2))"
+        query = distance_query(distance_type, v1, v2)
 
         success, latency = client.execute(query)
         latencies.append(latency)
