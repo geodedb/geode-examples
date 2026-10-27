@@ -24,6 +24,7 @@ workflow:
   - when: always
 
   auto_cancel:
+    on_job_failure: all
     on_new_commit: interruptible
 stages:
 - test-gql
