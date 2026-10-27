@@ -4,295 +4,226 @@
 # through automated testing against a black-box Geode instance.
 
 # Fork protection: jobs here run on the privileged lab runner pool
-# (docker:dind), so never execute pipelines for MRs from forks —
+# (host Docker socket), so never execute pipelines for MRs from forks —
 # untrusted code must not reach privileged runners. Same-project MRs,
 # main, tags, web and scheduled runs are unaffected.
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID != $CI_PROJECT_ID
-      when: never
-    - when: always
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID != $CI_PROJECT_ID
+    when: never
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS
+    when: never
+  # Stop redundant validation after a required failure on MRs/feature branches.
+  # Keep default-branch and tag publication behavior unchanged.
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    auto_cancel:
+      on_job_failure: all
+  - if: $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    auto_cancel:
+      on_job_failure: all
+  - when: always
 
+  auto_cancel:
+    on_new_commit: interruptible
 stages:
-  - build
-  - test-gql
-  - test-clients
-  - test-features
-  - benchmark
-  - security
-  - verify
-  - report
-  - secret-detection
-
-# Global variables
+- test-gql
+- test-clients
+- test-features
+- benchmark
+- security
+- verify
+- report
 variables:
-  GEODE_IMAGE: "geodedb/geode:latest"
-  FF_NETWORK_PER_BUILD: "true"
-  SECRET_DETECTION_ENABLED: "true"
-
-# Cache configuration
-cache:
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - .cache/
-
-# Default job configuration
+  # Pin the multi-platform manifest so verification does not change under a running MR.
+  GEODE_IMAGE: geodedb/geode:latest@sha256:48a24f3739bda9017536cdd7b9b0c14474d0cc643d0b202560465d3834b9587a
+  FF_NETWORK_PER_BUILD: 'true'
+  GIT_DEPTH: '1'
+  GOMAXPROCS: '2'
 default:
   image: docker:29.9
-  # Socket-binding mode: the lab runners mount the host's
-  # /var/run/docker.sock into every container (which is also why a dind
-  # service can never bind its own socket there — "device or resource
-  # busy"). Talk to the host daemon directly; no dind service.
-  before_script:
-    # Policy-injected scanner jobs inherit this default before_script but
-    # run non-root images where apk cannot lock its database; tolerate
-    # that instead of failing jobs that never needed the packages.
-    - apk add --no-cache make bash curl 2>/dev/null || echo "skipping package install (non-root or non-alpine image)"
-    - |
-      # Only docker-based jobs need the daemon; report/utility jobs use
-      # images without the docker CLI and must not fail this gate.
-      if command -v docker >/dev/null 2>&1; then
-        for i in $(seq 1 60); do
-          if docker info >/dev/null 2>&1; then break; fi
-          sleep 1
-        done
-        docker info >/dev/null 2>&1 || { echo "docker daemon never became ready"; exit 1; }
-      fi
-  # The lab runner pool mounts the host docker socket; keep these tags.
-  # `amd64` targets the Lab Servers runner (haleth + lothiriel, host
-  # docker.sock mounted). The Incus cluster runner, the only one carrying
-  # `x86` + `lab`, has been paused since 2026-09-29, which left every job
-  # here stuck_pending_no_matching_runners.
   tags:
-    [company, lab, linux, amd64]
-build:docker:
-  stage: build
-  script:
-    # A previous job's crash-looping container (fixed container_name +
-    # restart: unless-stopped) survives on the shared host daemon and
-    # blocks/poisons this run — remove it first.
-    - docker compose down -v --remove-orphans || true
-    - docker compose build
-    - docker compose up -d geode
-    - sleep 10
-    - docker compose exec -T geode sh -c 'geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P "$GEODE_ADMIN_PASSWORD" "RETURN 1"' || { docker compose ps; docker compose logs geode; exit 1; }
-  after_script:
-    # Never leave containers behind on the shared host daemon.
-    - docker compose down -v --remove-orphans || true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-# =============================================================================
-# GQL Compliance Tests
-# =============================================================================
-
-.geode-service:
+  - company
+  - dedicated
+  - linux
+  - amd64
+  interruptible: true
   before_script:
-    - apk add --no-cache make bash curl python3 py3-pip
-    - pip3 install --break-system-packages pytest pytest-asyncio pyyaml
-    - docker compose up -d geode
-    - sleep 15
-    - docker compose exec -T geode sh -c 'geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P "$GEODE_ADMIN_PASSWORD" "RETURN 1"' || (docker compose logs geode && exit 1)
-
-test:gql:basic:
+  - mkdir -p reports
+check:query-runner:
   stage: test-gql
-  extends: .geode-service
+  image: python:3.15-slim
+  tags: [company, linux, x86]
+  before_script: []
+  dependencies: []
   script:
-    - echo "Running basic GQL tests..."
-    - |
-      for f in gql/basic/*.gql; do
-        if [ -f "$f" ]; then
-          echo "Testing $f..."
-          query=$(cat "$f")
-          docker compose exec -T geode sh -c "geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P \"\$GEODE_ADMIN_PASSWORD\" '$query'" || exit 1
-        fi
-      done
+  - python3 scripts/test_geode_response.py
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:gql:advanced:
-  stage: test-gql
-  extends: .geode-service
-  script:
-    - echo "Running advanced GQL tests..."
-    - |
-      for f in gql/advanced/*.gql; do
-        if [ -f "$f" ]; then
-          echo "Testing $f..."
-          query=$(cat "$f")
-          docker compose exec -T geode sh -c "geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P \"\$GEODE_ADMIN_PASSWORD\" '$query'" || exit 1
-        fi
-      done
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:gql:transactions:
-  stage: test-gql
-  extends: .geode-service
-  script:
-    - echo "Running transaction GQL tests..."
-    - |
-      for f in gql/transactions/*.gql; do
-        if [ -f "$f" ]; then
-          echo "Testing $f..."
-          query=$(cat "$f")
-          docker compose exec -T geode sh -c "geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P \"\$GEODE_ADMIN_PASSWORD\" '$query'" || exit 1
-        fi
-      done
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-# =============================================================================
-# Client Library Tests
-# =============================================================================
-
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+.geode-service:
+  tags:
+  - lab
+  - linux
+  - amd64
+  variables:
+    COMPOSE_FILE: $CI_PROJECT_DIR/docker/compose.ci.yml
+  before_script:
+  - apk add --no-cache make bash curl python3 py3-pip py3-pytest py3-pytest-asyncio py3-yaml
+  - export COMPOSE_PROJECT_NAME="geode-examples-${CI_PROJECT_ID}-${CI_JOB_ID}"
+  - mkdir -p reports
+  - docker info >/dev/null
+  - docker compose up -d --wait --wait-timeout 90 geode
+  after_script:
+  - export COMPOSE_PROJECT_NAME="geode-examples-${CI_PROJECT_ID}-${CI_JOB_ID}"
+  - docker compose down --volumes --remove-orphans
+  dependencies: []
 test:client:go:
   stage: test-clients
-  image: golang:1.27.2
-  extends: .geode-service
+  image: golang:1.27.3
   script:
-    - |
-      if [ -f clients/go/go.mod ]; then
-        cd clients/go
-        go test -v ./... 2>&1 | tee ../../reports/go-tests.log
-      else
-        echo "Go client not configured, skipping"
-      fi
+  - make test-client-go
   artifacts:
     paths:
-      - reports/go-tests.log
+    - reports/
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
+  before_script:
+  - mkdir -p reports
+  dependencies: []
+  variables:
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
+  cache:
+    key:
+      prefix: go-1.27.3-examples
+      files:
+      - clients/go/go.mod
+    paths:
+    - .cache/go-build/
+    - .cache/go-mod/
 test:client:python:
   stage: test-clients
   image: python:3.15
-  extends: .geode-service
   script:
-    - |
-      if [ -f clients/python/requirements.txt ]; then
-        pip install -r clients/python/requirements.txt
-        cd clients/python
-        pytest -v tests/ 2>&1 | tee ../../reports/python-tests.log
-      else
-        echo "Python client not configured, skipping"
-      fi
+  - make test-client-python
   artifacts:
     paths:
-      - reports/python-tests.log
+    - reports/
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
+  before_script:
+  - mkdir -p reports
+  dependencies: []
 test:client:rust:
   stage: test-clients
   image: rust:1.99
-  extends: .geode-service
   script:
-    - |
-      if [ -f clients/rust/Cargo.toml ]; then
-        cd clients/rust
-        cargo test 2>&1 | tee ../../reports/rust-tests.log
-      else
-        echo "Rust client not configured, skipping"
-      fi
+  - make test-client-rust
   artifacts:
     paths:
-      - reports/rust-tests.log
+    - reports/
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
+  before_script:
+  - mkdir -p reports
+  dependencies: []
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cache/cargo
+    CARGO_BUILD_JOBS: '2'
+  cache:
+    key:
+      prefix: rust-1.99-examples
+      files:
+      - clients/rust/Cargo.toml
+    paths:
+    - .cache/cargo/registry/
+    - .cache/cargo/git/
+    - clients/rust/target/
 test:client:nodejs:
   stage: test-clients
   image: node:26-alpine
-  extends: .geode-service
   script:
-    - |
-      if [ -f clients/nodejs/package.json ]; then
-        cd clients/nodejs
-        npm install
-        npm test 2>&1 | tee ../../reports/nodejs-tests.log || true
-        # Run examples as smoke test
-        npm run basic 2>&1 | tee -a ../../reports/nodejs-tests.log || true
-      else
-        echo "Node.js client not configured, skipping"
-      fi
+  - make test-client-nodejs
   artifacts:
     paths:
-      - reports/nodejs-tests.log
+    - reports/
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
+  before_script:
+  - apk add --no-cache make bash
+  - mkdir -p reports
+  dependencies: []
 test:client:zig:
   stage: test-clients
   image: debian:trixie
-  extends: .geode-service
   script:
-    - apt-get update && apt-get install -y wget xz-utils
-    - wget -q https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
-    - tar -xf zig-x86_64-linux-0.16.0.tar.xz
-    - export PATH="$PWD/zig-x86_64-linux-0.16.0:$PATH"
-    - |
-      if [ -f clients/zig/build.zig ]; then
-        cd clients/zig
-        zig build 2>&1 | tee ../../reports/zig-build.log
-        zig build test 2>&1 | tee -a ../../reports/zig-tests.log || true
-      else
-        echo "Zig client not configured, skipping"
-      fi
+  - make test-client-zig
   artifacts:
     paths:
-      - reports/zig-tests.log
-      - reports/zig-build.log
+    - reports/
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
 # =============================================================================
 # Feature Verification Tests
 # =============================================================================
 
+  before_script:
+  - apt-get update && apt-get install -y --no-install-recommends make ca-certificates curl xz-utils
+  - mkdir -p reports
+  - |-
+    mkdir -p .cache/zig-toolchain
+    if [ ! -x .cache/zig-toolchain/zig ]; then
+      curl --fail --location --retry 3 https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o .cache/zig.tar.xz
+      echo "$ZIG_LINUX_AMD64_SHA256  .cache/zig.tar.xz" | sha256sum -c -
+      tar -xJf .cache/zig.tar.xz --strip-components=1 -C .cache/zig-toolchain
+      rm .cache/zig.tar.xz
+    fi
+    export PATH="$PWD/.cache/zig-toolchain:$PATH"
+    zig version | grep -Fx 0.16.0
+  dependencies: []
+  variables:
+    ZIG_GLOBAL_CACHE_DIR: $CI_PROJECT_DIR/.cache/zig-global
+    ZIG_LINUX_AMD64_SHA256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+  cache:
+    key: zig-0.16.0-examples-amd64
+    paths:
+    - .cache/zig-toolchain/
+    - .cache/zig-global/
+    - clients/zig/.zig-cache/
 test:features:
   stage: test-features
   extends: .geode-service
   script:
-    - mkdir -p reports
-    - |
-      if [ -d verification/claims/features ]; then
-        python3 -m pytest verification/claims/features/ -v \
-          --junitxml=reports/features.xml 2>&1 | tee reports/features.log
-      else
-        echo "Feature tests not configured, skipping"
-      fi
+  - make test-features
   artifacts:
     reports:
       junit: reports/features.xml
     paths:
-      - reports/features.log
+    - reports/
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
 # =============================================================================
@@ -303,315 +234,159 @@ benchmark:throughput:
   stage: benchmark
   extends: .geode-service
   script:
-    - mkdir -p reports
-    - |
-      if [ -f benchmarks/load-tests/read_only.py ]; then
-        python3 benchmarks/load-tests/read_only.py \
-          --duration 30 \
-          --output reports/throughput.json
-      else
-        echo "Benchmark not configured, skipping"
-        echo '{"status": "skipped"}' > reports/throughput.json
-      fi
+  - mkdir -p reports
+  - |
+    if [ -f benchmarks/load-tests/read_only.py ]; then
+      python3 benchmarks/load-tests/read_only.py \
+        --duration 30 \
+        --output reports/throughput.json
+    else
+      echo "Benchmark not configured, skipping"
+      echo '{"status": "skipped"}' > reports/throughput.json
+    fi
   artifacts:
     paths:
-      - reports/throughput.json
+    - reports/throughput.json
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH == "main"
-    - when: manual
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_BRANCH == "main"
+  - when: manual
   allow_failure: true
 
 benchmark:latency:
   stage: benchmark
   extends: .geode-service
   script:
-    - mkdir -p reports
-    - |
-      if [ -f benchmarks/load-tests/vector_distance.py ]; then
-        python3 benchmarks/load-tests/vector_distance.py \
-          --output reports/latency.json
-      else
-        echo "Benchmark not configured, skipping"
-        echo '{"status": "skipped"}' > reports/latency.json
-      fi
+  - mkdir -p reports
+  - |
+    if [ -f benchmarks/load-tests/vector_distance.py ]; then
+      python3 benchmarks/load-tests/vector_distance.py \
+        --output reports/latency.json
+    else
+      echo "Benchmark not configured, skipping"
+      echo '{"status": "skipped"}' > reports/latency.json
+    fi
   artifacts:
     paths:
-      - reports/latency.json
+    - reports/latency.json
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH == "main"
-    - when: manual
+  - if: $CI_PIPELINE_SOURCE == "schedule"
+  - if: $CI_COMMIT_BRANCH == "main"
+  - when: manual
   allow_failure: true
 
 # =============================================================================
 # Security Tests
 # =============================================================================
 
-test:security:tde:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -d verification/claims/security ]; then
-        python3 -m pytest verification/claims/security/tde_encryption.py -v \
-          --junitxml=reports/security-tde.xml 2>&1 | tee reports/security-tde.log
-      else
-        echo "Security tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-tde.xml
-    paths:
-      - reports/security-tde.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:security:rls:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -d verification/claims/security ]; then
-        python3 -m pytest verification/claims/security/rls_policies.py -v \
-          --junitxml=reports/security-rls.xml 2>&1 | tee reports/security-rls.log
-      else
-        echo "Security tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-rls.xml
-    paths:
-      - reports/security-rls.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:security:mfa:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -f verification/claims/security/mfa_totp.py ]; then
-        python3 -m pytest verification/claims/security/mfa_totp.py -v \
-          --junitxml=reports/security-mfa.xml 2>&1 | tee reports/security-mfa.log
-      else
-        echo "MFA tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-mfa.xml
-    paths:
-      - reports/security-mfa.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:security:tls:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -f verification/claims/security/tls_protocol.py ]; then
-        python3 -m pytest verification/claims/security/tls_protocol.py -v \
-          --junitxml=reports/security-tls.xml 2>&1 | tee reports/security-tls.log
-      else
-        echo "TLS tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-tls.xml
-    paths:
-      - reports/security-tls.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:security:quic:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -f verification/claims/security/quic_transport.py ]; then
-        python3 -m pytest verification/claims/security/quic_transport.py -v \
-          --junitxml=reports/security-quic.xml 2>&1 | tee reports/security-quic.log
-      else
-        echo "QUIC tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-quic.xml
-    paths:
-      - reports/security-quic.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:security:password:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -f verification/claims/security/password_hashing.py ]; then
-        python3 -m pytest verification/claims/security/password_hashing.py -v \
-          --junitxml=reports/security-password.xml 2>&1 | tee reports/security-password.log
-      else
-        echo "Password hashing tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-password.xml
-    paths:
-      - reports/security-password.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-test:security:audit:
-  stage: security
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - |
-      if [ -f verification/claims/security/audit_logging.py ]; then
-        python3 -m pytest verification/claims/security/audit_logging.py -v \
-          --junitxml=reports/security-audit.xml 2>&1 | tee reports/security-audit.log
-      else
-        echo "Audit logging tests not configured, skipping"
-      fi
-  artifacts:
-    reports:
-      junit: reports/security-audit.xml
-    paths:
-      - reports/security-audit.log
-    when: always
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
-# =============================================================================
-# Verification
-# =============================================================================
-
-verify:claims:
-  stage: verify
-  extends: .geode-service
-  script:
-    - mkdir -p reports
-    - ./scripts/run_all_tests.sh --quick 2>&1 | tee reports/verification.log
-  artifacts:
-    paths:
-      - reports/
-    when: always
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-  allow_failure: true
-
 verify:extract-claims:
   stage: verify
   image: python:3.15-alpine
   script:
-    - apk add --no-cache bash git
-    - mkdir -p reports docs
-    - |
-      if [ -f verification/extractors/extract_claims.py ]; then
-        python3 verification/extractors/extract_claims.py \
-          --docs-path docs \
-          --output reports/extracted_claims.json
-      fi
-    - |
-      if [ -f verification/extractors/extract_gql_examples.py ]; then
-        python3 verification/extractors/extract_gql_examples.py \
-          --docs-path docs \
-          --output-dir reports/extracted_gql \
-          --list-only 2>&1 | tee reports/gql_examples.log
-      fi
+  - apk add --no-cache bash git
+  - mkdir -p reports docs
+  - |
+    if [ -f verification/extractors/extract_claims.py ]; then
+      python3 verification/extractors/extract_claims.py \
+        --docs-path docs \
+        --output reports/extracted_claims.json
+    fi
+  - |
+    if [ -f verification/extractors/extract_gql_examples.py ]; then
+      python3 verification/extractors/extract_gql_examples.py \
+        --docs-path docs \
+        --output-dir reports/extracted_gql \
+        --list-only 2>&1 | tee reports/gql_examples.log
+    fi
   artifacts:
     paths:
-      - reports/extracted_claims.json
-      - reports/extracted_gql/
-      - reports/gql_examples.log
+    - reports/extracted_claims.json
+    - reports/extracted_gql/
+    - reports/gql_examples.log
     when: always
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
+  dependencies: []
 verify:canary:
   stage: verify
   image: alpine:3.24
   script:
-    - apk add --no-cache bash grep coreutils bc
-    - mkdir -p docs
-    - ./scripts/compare_canary.sh ../geode ../geodedb.com 2>&1 | tee docs/CANARY_CROSSREF.md || true
+  - apk add --no-cache bash grep coreutils bc
+  - mkdir -p docs
+  - ./scripts/compare_canary.sh ../geode ../geodedb.com 2>&1 | tee docs/CANARY_CROSSREF.md || true
   artifacts:
     paths:
-      - docs/CANARY_CROSSREF.md
+    - docs/CANARY_CROSSREF.md
     when: always
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true
 
 # =============================================================================
 # Report Generation
 # =============================================================================
 
+  dependencies: []
 report:html:
   stage: report
   image: python:3.15-alpine
   script:
-    - apk add --no-cache bash jq bc
-    - mkdir -p public reports
-    - ./scripts/generate_report.sh --all
+  - apk add --no-cache make bash jq bc
+  - make report
   artifacts:
     paths:
-      - public/
+    - public/
     expire_in: 30 days
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_COMMIT_BRANCH == "main"
 
 pages:
+  interruptible: false
   stage: report
   # Publish the HTML report: without `needs`, this job got an EMPTY
   # public/ (its old cp was a self-referential no-op) and GitLab's
   # internal pages:deploy failed the whole pipeline with "include a
   # public/ folder in your artifacts".
   needs:
-    - job: report:html
-      artifacts: true
+  - job: report:html
+    artifacts: true
   script:
-    - test -f public/index.html || { mkdir -p public; echo "<html><body>report:html produced no index</body></html>" > public/index.html; }
+  - test -f public/index.html || { mkdir -p public; echo "<html><body>report:html produced no
+    index</body></html>" > public/index.html; }
   artifacts:
     paths:
-      - public
+    - public
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_COMMIT_BRANCH == "main"
 
-# =============================================================================
-# Security Scanning (GitLab Templates)
-# =============================================================================
-
-include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-
-sast:
+  before_script: []
+test:gql:
   stage: test-gql
-
-secret_detection:
-  stage: secret-detection
+  extends: .geode-service
+  script:
+  - make test-gql
+  artifacts:
+    paths:
+    - reports/
+    when: always
+  rules: &id001
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  allow_failure: true
+test:security:
+  stage: security
+  extends: .geode-service
+  script:
+  - make test-security
+  artifacts:
+    reports:
+      junit: reports/security.xml
+    paths:
+    - reports/
+    when: always
+  rules: *id001
+  allow_failure: true

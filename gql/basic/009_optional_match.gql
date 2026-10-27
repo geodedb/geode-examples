@@ -16,6 +16,7 @@ ORDER BY p.name;
 MATCH (p:Person)
 OPTIONAL MATCH (p)-[:KNOWS]->(friend:Person)
 RETURN p.name, COUNT(friend) AS friend_count
+GROUP BY p.name
 ORDER BY friend_count DESC;
 
 -- Multiple OPTIONAL MATCHes
@@ -25,7 +26,8 @@ OPTIONAL MATCH (p)-[:LIVES_IN]->(city:City)
 RETURN
     p.name,
     COUNT(DISTINCT friend) AS friends,
-    city.name AS city;
+    city.name AS city
+GROUP BY p.name, city.name;
 
 -- OPTIONAL MATCH with COALESCE for default values
 MATCH (p:Person)

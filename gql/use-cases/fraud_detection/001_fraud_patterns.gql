@@ -113,6 +113,7 @@ RETURN
     offshore.name AS offshore_destination,
     SUM(t.amount) AS total_to_offshore,
     COUNT(t) AS transfer_count
+GROUP BY a.name, offshore.name
 ORDER BY total_to_offshore DESC;
 
 -- 5. Velocity Analysis

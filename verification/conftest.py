@@ -55,11 +55,8 @@ class GeodeClient:
             if self._docker_compose:
                 # Execute via docker compose
                 cmd = [
-                    "docker", "compose", "exec", "-T", "geode",
-                    "geode", "query",
-                    "--server", "localhost:3141",
-                    "--insecure",
-                    query
+                    "bash", str(Path(__file__).resolve().parents[1] / "scripts/geode-query.sh"),
+                    query,
                 ]
             else:
                 # Direct execution

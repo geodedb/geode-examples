@@ -8,62 +8,63 @@
 -- Create locations with coordinates
 CREATE (:Location {
     name: 'Empire State Building',
-    coords: point({latitude: 40.7484, longitude: -73.9857})
+    coords: latlon(40.7484, -73.9857)
 });
 
 CREATE (:Location {
     name: 'Statue of Liberty',
-    coords: point({latitude: 40.6892, longitude: -74.0445})
+    coords: latlon(40.6892, -74.0445)
 });
 
 CREATE (:Location {
     name: 'Central Park',
-    coords: point({latitude: 40.7829, longitude: -73.9654})
+    coords: latlon(40.7829, -73.9654)
 });
 
 CREATE (:Location {
     name: 'Brooklyn Bridge',
-    coords: point({latitude: 40.7061, longitude: -73.9969})
+    coords: latlon(40.7061, -73.9969)
 });
 
 CREATE (:Location {
     name: 'Times Square',
-    coords: point({latitude: 40.7580, longitude: -73.9855})
+    coords: latlon(40.7580, -73.9855)
 });
 
 -- Create R-tree spatial index
-CREATE INDEX location_coords_spatial ON Location(coords) USING spatial;
+CREATE INDEX location_coords_spatial ON Location(coords) USING spatial_geographic;
 
--- Find locations within distance (in kilometers)
-WITH point({latitude: 40.7484, longitude: -73.9857}) AS reference
+-- Haversine distance is returned in meters; convert displayed values to kilometers.
+-- Find locations within 5 kilometers
+WITH latlon(40.7484, -73.9857) AS reference
 MATCH (l:Location)
-WHERE distanceKm(l.coords, reference) < 5
-RETURN l.name, distanceKm(l.coords, reference) AS distance_km
+WHERE distance_haversine(l.coords, reference) < 5000
+RETURN l.name, distance_haversine(l.coords, reference) / 1000.0 AS distance_km
 ORDER BY distance_km;
 
 -- Find locations within bounding box
 MATCH (l:Location)
-WHERE l.coords.latitude >= 40.70 AND l.coords.latitude <= 40.80
-  AND l.coords.longitude >= -74.00 AND l.coords.longitude <= -73.95
+WHERE latitude(l.coords) >= 40.70 AND latitude(l.coords) <= 40.80
+  AND longitude(l.coords) >= -74.00 AND longitude(l.coords) <= -73.95
 RETURN l.name, l.coords;
 
 -- Find nearest N locations
-WITH point({latitude: 40.7580, longitude: -73.9855}) AS times_square
+WITH latlon(40.7580, -73.9855) AS times_square
 MATCH (l:Location)
-RETURN l.name, distanceKm(l.coords, times_square) AS distance_km
+RETURN l.name, distance_haversine(l.coords, times_square) / 1000.0 AS distance_km
 ORDER BY distance_km
 LIMIT 3;
 
 -- Haversine distance calculation
-WITH point({latitude: 40.7484, longitude: -73.9857}) AS empire_state
+WITH latlon(40.7484, -73.9857) AS empire_state
 MATCH (l:Location)
 WHERE l.name <> 'Empire State Building'
-RETURN l.name, distanceKm(l.coords, empire_state) AS haversine_km
+RETURN l.name, distance_haversine(l.coords, empire_state) / 1000.0 AS haversine_km
 ORDER BY haversine_km;
 
 -- Explain spatial query
 EXPLAIN
-WITH point({latitude: 40.7484, longitude: -73.9857}) AS reference
+WITH latlon(40.7484, -73.9857) AS reference
 MATCH (l:Location)
-WHERE distanceKm(l.coords, reference) < 5
+WHERE distance_haversine(l.coords, reference) < 5000
 RETURN l.name;

@@ -4,6 +4,8 @@ Pytest configuration for feature claim verification tests.
 
 CANARY: REQ=REQ-TEST-FEAT-001; FEATURE="FeatureTestConfig"; ASPECT=Testing; STATUS=TESTED
 """
+from pathlib import Path
+import os
 import pytest
 import subprocess
 import time
@@ -16,17 +18,14 @@ class GeodeClient:
     def __init__(self, use_docker: bool = True):
         self.use_docker = use_docker
 
-    def execute(self, query: str, timeout: float = 30.0):
+    def execute(self, query: str, timeout: float = 30.0, *, stdin: Optional[str] = None):
         """Execute a query and return a result object."""
         start = time.perf_counter()
         try:
             if self.use_docker:
                 cmd = [
-                    "docker", "compose", "exec", "-T", "geode",
-                    "geode", "query",
-                    "--server", "localhost:3141",
-                    "--insecure",
-                    query
+                    "bash", str(Path(__file__).resolve().parents[3] / "scripts/geode-query.sh"),
+                    query,
                 ]
             else:
                 cmd = [
@@ -36,7 +35,7 @@ class GeodeClient:
                     query
                 ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=timeout)
             latency = (time.perf_counter() - start) * 1000
 
             return QueryResult(
@@ -53,6 +52,13 @@ class GeodeClient:
                 error=str(e),
                 latency_ms=latency
             )
+
+    def execute_many(self, queries, timeout: float = 30.0):
+        """Send separate statements over one authenticated batch connection."""
+        queries = list(queries)
+        if not queries or any("\n" in query or "\r" in query for query in queries):
+            raise ValueError("Batch queries must be nonempty single-line statements")
+        return self.execute("--batch", timeout=timeout, stdin="\n".join(queries) + "\n")
 
 
 class QueryResult:
@@ -73,6 +79,8 @@ def geode_client():
     # Verify connection
     result = client.execute("RETURN 1")
     if not result.success:
+        if os.environ.get("CI"):
+            pytest.fail(f"Geode server is not available: {result.error}")
         pytest.skip("Geode server is not available")
 
     return client
@@ -90,11 +98,10 @@ def clean_database(geode_client):
         "KNNTest", "Embedding", "HighDimEmbedding"
     ]
 
-    for label in test_labels:
-        try:
-            geode_client.execute(f"MATCH (n:{label}) DETACH DELETE n")
-        except Exception:
-            pass
+    result = geode_client.execute_many(
+        f"MATCH (n:{label}) DETACH DELETE n" for label in test_labels
+    )
+    assert result.success, f"Feature test cleanup failed: {result.error}"
 
 
 def pytest_configure(config):

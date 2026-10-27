@@ -130,6 +130,7 @@ RETURN
     company.name AS company,
     COUNT(tech) AS technologies_created,
     COLLECT(tech.name) AS technology_list
+GROUP BY company.name
 ORDER BY technologies_created DESC;
 
 -- 8. Cross-Domain Query: Open source ML frameworks

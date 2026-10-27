@@ -7,25 +7,21 @@
 -- Pattern 1: Atomic Transfer (All or Nothing)
 START TRANSACTION;
 
--- Check source has sufficient funds
-MATCH (source:Account {name: 'Alice'})
+-- Both statements use the same eligibility check within one transaction.
+-- With insufficient funds or a missing destination, neither statement writes.
+MATCH (source:Account {name: 'Alice'}), (dest:Account {name: 'Bob'})
 WHERE source.balance >= 200
-WITH source;
-
--- Perform transfer
-MATCH (source:Account {name: 'Alice'})
-SET source.balance = source.balance - 200;
-
-MATCH (dest:Account {name: 'Bob'})
-SET dest.balance = dest.balance + 200;
-
--- Log transaction
 CREATE (:Transfer {
-    from: 'Alice',
-    to: 'Bob',
+    from: source.name,
+    to: dest.name,
     amount: 200,
     timestamp: timestamp()
 });
+
+MATCH (source:Account {name: 'Alice'}), (dest:Account {name: 'Bob'})
+WHERE source.balance >= 200
+SET source.balance = source.balance - 200,
+    dest.balance = dest.balance + 200;
 
 COMMIT;
 
@@ -47,9 +43,18 @@ CREATE (:Product {name: 'Product2', price: 200});
 CREATE (:Product {name: 'Product3', price: 300});
 
 -- Create inventory records
+-- Give existing records the same per-product key used by MERGE, without
+-- changing their quantities. A label-only MERGE could reuse another product's stock.
+MATCH (p:Product)-[:HAS_INVENTORY]->(inventory:Inventory)
+SET inventory.product_id = id(p);
+
 MATCH (p:Product)
-WHERE NOT EXISTS { MATCH (p)-[:HAS_INVENTORY]->() }
-CREATE (p)-[:HAS_INVENTORY]->(:Inventory {quantity: 0});
+MERGE (p)-[:HAS_INVENTORY]->(:Inventory {product_id: id(p)});
+
+-- Initialize new inventory without resetting quantities on existing records.
+MATCH (p:Product)-[:HAS_INVENTORY]->(inventory:Inventory)
+WHERE inventory.quantity IS NULL
+SET inventory.quantity = 0;
 
 COMMIT;
 

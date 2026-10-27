@@ -9,6 +9,7 @@ CANARY: REQ=REQ-VECTOR-001; FEATURE="VectorSearch"; ASPECT=Features; STATUS=TEST
 This module verifies Geode's vector search capabilities including
 HNSW indexing, similarity functions, and vector operations.
 """
+import json
 import pytest
 import random
 
@@ -101,11 +102,11 @@ class TestVectorSearchClaim:
         # sqrt(2) = 1.414...
         result = self.client.execute(f"""
             WITH {v1} AS v1, {v2} AS v2
-            RETURN sqrt(reduce(sum = 0.0, i IN range(0, size(v1)-1) |
-                sum + (v1[i] - v2[i])^2
-            )) AS euclidean_distance
+            RETURN vector_l2(vectorf32(v1), vectorf32(v2)) AS euclidean_distance
         """)
         assert result.success, f"Euclidean distance failed: {result.error}"
+        distance = json.loads(result.output)["rows"][0]["euclidean_distance"]
+        assert float(distance) == pytest.approx(2 ** 0.5, abs=1e-6)
 
     def test_cosine_similarity(self):
         """Test cosine similarity calculation."""
@@ -114,13 +115,11 @@ class TestVectorSearchClaim:
 
         result = self.client.execute(f"""
             WITH {v1} AS v1, {v2} AS v2
-            WITH v1, v2,
-                reduce(dot = 0.0, i IN range(0, size(v1)-1) | dot + v1[i] * v2[i]) AS dot_product,
-                sqrt(reduce(s = 0.0, i IN range(0, size(v1)-1) | s + v1[i]^2)) AS mag1,
-                sqrt(reduce(s = 0.0, i IN range(0, size(v2)-1) | s + v2[i]^2)) AS mag2
-            RETURN dot_product / (mag1 * mag2) AS cosine_similarity
+            RETURN vector_cosine(vectorf32(v1), vectorf32(v2)) AS cosine_similarity
         """)
         assert result.success, f"Cosine similarity failed: {result.error}"
+        similarity = json.loads(result.output)["rows"][0]["cosine_similarity"]
+        assert float(similarity) == pytest.approx(1.0)
 
     def test_dot_product(self):
         """Test dot product calculation."""
@@ -130,9 +129,11 @@ class TestVectorSearchClaim:
 
         result = self.client.execute(f"""
             WITH {v1} AS v1, {v2} AS v2
-            RETURN reduce(dot = 0.0, i IN range(0, size(v1)-1) | dot + v1[i] * v2[i]) AS dot_product
+            RETURN vector_dot(vectorf32(v1), vectorf32(v2)) AS dot_product
         """)
         assert result.success, f"Dot product failed: {result.error}"
+        dot_product = json.loads(result.output)["rows"][0]["dot_product"]
+        assert float(dot_product) == pytest.approx(32.0)
 
     def test_manhattan_distance(self):
         """Test Manhattan (L1) distance calculation."""
@@ -142,11 +143,11 @@ class TestVectorSearchClaim:
 
         result = self.client.execute(f"""
             WITH {v1} AS v1, {v2} AS v2
-            RETURN reduce(sum = 0.0, i IN range(0, size(v1)-1) |
-                sum + abs(v1[i] - v2[i])
-            ) AS manhattan_distance
+            RETURN manhattan(vectorf32(v1), vectorf32(v2)) AS manhattan_distance
         """)
         assert result.success, f"Manhattan distance failed: {result.error}"
+        distance = json.loads(result.output)["rows"][0]["manhattan_distance"]
+        assert float(distance) == pytest.approx(12.0)
 
     # =========================================================================
     # Similarity Search
@@ -182,7 +183,7 @@ class TestVectorSearchClaim:
             MATCH (d:SearchDoc)
             WITH d, d.embedding AS emb, query
             WITH d,
-                reduce(dot = 0.0, i IN range(0, size(query)-1) | dot + query[i] * emb[i]) AS similarity
+                vector_dot(vectorf32(query), vectorf32(emb)) AS similarity
             RETURN d.title, similarity
             ORDER BY similarity DESC
             LIMIT 3
@@ -214,7 +215,7 @@ class TestVectorSearchClaim:
         result = self.client.execute("""
             CREATE INDEX vec_idx ON VectorIndexTest(embedding) USING vector
         """)
-        # Index creation may succeed or report already exists
+        assert result.success, f"Vector index creation failed: {result.error}"
 
         # Cleanup
         self.client.execute("DROP INDEX vec_idx")
@@ -230,10 +231,12 @@ class TestVectorSearchClaim:
 
         result = self.client.execute(f"""
             WITH {v} AS v
-            WITH v, sqrt(reduce(s = 0.0, i IN range(0, size(v)-1) | s + v[i]^2)) AS magnitude
-            RETURN [i IN range(0, size(v)-1) | v[i] / magnitude] AS normalized
+            WITH v, sqrt(vector_dot(vectorf32(v), vectorf32(v))) AS magnitude
+            RETURN [x IN v | x / magnitude] AS normalized
         """)
         assert result.success, f"Vector normalization failed: {result.error}"
+        normalized = json.loads(result.output)["rows"][0]["normalized"]
+        assert [float(value) for value in normalized] == pytest.approx([0.6, 0.8])
 
     def test_vector_addition(self):
         """Test vector addition."""
@@ -242,9 +245,11 @@ class TestVectorSearchClaim:
 
         result = self.client.execute(f"""
             WITH {v1} AS v1, {v2} AS v2
-            RETURN [i IN range(0, size(v1)-1) | v1[i] + v2[i]] AS sum_vector
+            RETURN [i IN range(0, size(v1)) | v1[i] + v2[i]] AS sum_vector
         """)
         assert result.success, f"Vector addition failed: {result.error}"
+        values = json.loads(result.output)["rows"][0]["sum_vector"]
+        assert [float(value) for value in values] == pytest.approx([5.0, 7.0, 9.0])
 
     def test_vector_scaling(self):
         """Test vector scalar multiplication."""
@@ -253,9 +258,11 @@ class TestVectorSearchClaim:
 
         result = self.client.execute(f"""
             WITH {v} AS v, {scalar} AS scalar
-            RETURN [i IN range(0, size(v)-1) | v[i] * scalar] AS scaled_vector
+            RETURN [x IN v | x * scalar] AS scaled_vector
         """)
         assert result.success, f"Vector scaling failed: {result.error}"
+        values = json.loads(result.output)["rows"][0]["scaled_vector"]
+        assert [float(value) for value in values] == pytest.approx([2.0, 4.0, 6.0])
 
 
 class TestVectorSearchPerformance:
@@ -311,10 +318,7 @@ class TestVectorSearchPerformance:
         result = self.client.execute(f"""
             WITH {query_str} AS query
             MATCH (n:KNNTest)
-            WITH n, reduce(dist = 0.0, i IN range(0, size(query)-1) |
-                dist + (query[i] - n.embedding[i])^2
-            ) AS squared_distance
-            RETURN n.id, sqrt(squared_distance) AS distance
+            RETURN n.id, vector_l2(vectorf32(query), vectorf32(n.embedding)) AS distance
             ORDER BY distance
             LIMIT 5
         """)

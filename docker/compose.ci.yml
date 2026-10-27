@@ -1,0 +1,21 @@
+# Every CI job sets a unique COMPOSE_PROJECT_NAME. Nothing binds a host port,
+# uses a fixed container name, or mounts the job checkout on the host daemon.
+services:
+  geode:
+    image: ${GEODE_IMAGE:-geodedb/geode:latest@sha256:48a24f3739bda9017536cdd7b9b0c14474d0cc643d0b202560465d3834b9587a}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    volumes: [geode-data:/data]
+    environment:
+      GEODE_DATA_DIR: /data
+      GEODE_ADMIN_PASSWORD: ${GEODE_ADMIN_PASSWORD:-GeodeTestPassword123!}
+    command: [serve, --data-dir, /data, --listen, '0.0.0.0:3141', --log-level, info]
+    healthcheck:
+      test: [CMD-SHELL, 'geode query --server localhost:3141 --ca-cert /data/server.crt -U geode -P "$$GEODE_ADMIN_PASSWORD" "RETURN 1"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: 'no'
+volumes:
+  geode-data:
