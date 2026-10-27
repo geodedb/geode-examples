@@ -57,6 +57,7 @@ check:query-runner:
   dependencies: []
   script:
   - python3 scripts/test_geode_response.py
+  - python3 -m unittest discover -s benchmarks/load-tests -p test_ci_benchmarks.py
   rules:
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -234,16 +235,7 @@ benchmark:throughput:
   stage: benchmark
   extends: .geode-service
   script:
-  - mkdir -p reports
-  - |
-    if [ -f benchmarks/load-tests/read_only.py ]; then
-      python3 benchmarks/load-tests/read_only.py \
-        --duration 30 \
-        --output reports/throughput.json
-    else
-      echo "Benchmark not configured, skipping"
-      echo '{"status": "skipped"}' > reports/throughput.json
-    fi
+  - make benchmark-throughput THROUGHPUT_OUTPUT=reports/throughput.json
   artifacts:
     paths:
     - reports/throughput.json
@@ -251,6 +243,13 @@ benchmark:throughput:
   rules:
   - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    changes:
+    - benchmarks/load-tests/**/*
+    - scripts/**/*
+    - docker/compose.ci.yml
+    - Makefile
+    - .gitlab-ci.yml
   - when: manual
   allow_failure: true
 
@@ -258,15 +257,7 @@ benchmark:latency:
   stage: benchmark
   extends: .geode-service
   script:
-  - mkdir -p reports
-  - |
-    if [ -f benchmarks/load-tests/vector_distance.py ]; then
-      python3 benchmarks/load-tests/vector_distance.py \
-        --output reports/latency.json
-    else
-      echo "Benchmark not configured, skipping"
-      echo '{"status": "skipped"}' > reports/latency.json
-    fi
+  - make benchmark-latency LATENCY_OUTPUT=reports/latency.json
   artifacts:
     paths:
     - reports/latency.json
@@ -274,6 +265,13 @@ benchmark:latency:
   rules:
   - if: $CI_PIPELINE_SOURCE == "schedule"
   - if: $CI_COMMIT_BRANCH == "main"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    changes:
+    - benchmarks/load-tests/**/*
+    - scripts/**/*
+    - docker/compose.ci.yml
+    - Makefile
+    - .gitlab-ci.yml
   - when: manual
   allow_failure: true
 

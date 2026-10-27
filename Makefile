@@ -123,23 +123,17 @@ test-performance: ## Run performance verification tests
 
 benchmark: benchmark-throughput benchmark-latency ## Run all benchmarks
 
+BENCHMARK_DURATION ?= 30
+THROUGHPUT_OUTPUT ?= $(REPORTS_DIR)/throughput-read-only.json
+LATENCY_OUTPUT ?= $(REPORTS_DIR)/latency-vector.json
+
 benchmark-throughput: ## Run throughput benchmarks
-	@echo "Running throughput benchmarks..."
 	@mkdir -p $(REPORTS_DIR)
-	@if [ -f benchmarks/load-tests/read_only.py ]; then \
-		python benchmarks/load-tests/read_only.py \
-			--host $(GEODE_HOST) \
-			--output $(REPORTS_DIR)/throughput-read-only.json; \
-	fi
+	$(PYTHON) benchmarks/load-tests/read_only.py --duration $(BENCHMARK_DURATION) --output $(THROUGHPUT_OUTPUT)
 
 benchmark-latency: ## Run latency benchmarks
-	@echo "Running latency benchmarks..."
 	@mkdir -p $(REPORTS_DIR)
-	@if [ -f benchmarks/load-tests/vector_distance.py ]; then \
-		python benchmarks/load-tests/vector_distance.py \
-			--host $(GEODE_HOST) \
-			--output $(REPORTS_DIR)/latency-vector.json; \
-	fi
+	$(PYTHON) benchmarks/load-tests/vector_distance.py --output $(LATENCY_OUTPUT)
 
 benchmark-vector: ## Run vector search benchmarks
 	@echo "Running vector search benchmarks..."
