@@ -33,11 +33,10 @@ COMMIT;
 
 -- Transaction: Read-modify-write
 START TRANSACTION;
-MATCH (a:Account)
-WHERE a.balance > 500
-WITH COUNT(a) AS high_balance_count
-WHERE high_balance_count > 0
-MATCH (a:Account)
+-- Mark each account once when at least one high-balance account exists.
+MATCH (a:Account), (high:Account)
+WHERE high.balance > 500
+WITH DISTINCT a
 SET a.category = 'active';
 COMMIT;
 

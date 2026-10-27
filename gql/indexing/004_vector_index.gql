@@ -36,47 +36,42 @@ CREATE (:Document {
 -- Create HNSW vector index with default parameters
 CREATE INDEX doc_embedding_hnsw ON Document(embedding) USING vector;
 
--- Create HNSW vector index with custom parameters
-CREATE INDEX doc_embedding_tuned ON Document(embedding) USING vector
-WITH (
-    M = 16,                    -- Max connections per node
-    ef_construction = 200,     -- Search width during construction
-    ef_search = 100,           -- Search width at query time
-    distance_metric = 'L2'     -- Euclidean distance
-);
+-- Select a supported index metric. GQL does not expose HNSW tuning knobs.
+CREATE INDEX doc_embedding_cosine ON Document(embedding) USING vector
+WITH (metric = 'cosine');
 
 -- Vector similarity search using L2 (Euclidean) distance
 -- Find documents similar to query vector
 WITH [0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82] AS query_vector
 MATCH (d:Document)
-RETURN d.title, euclideanDistance(d.embedding, query_vector) AS distance
+RETURN d.title, vector_l2(vectorf32(d.embedding), vectorf32(query_vector)) AS distance
 ORDER BY distance
 LIMIT 3;
 
 -- Cosine similarity search
 WITH [0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82] AS query_vector
 MATCH (d:Document)
-RETURN d.title, cosineSimilarity(d.embedding, query_vector) AS similarity
+RETURN d.title, vector_cosine(vectorf32(d.embedding), vectorf32(query_vector)) AS similarity
 ORDER BY similarity DESC
 LIMIT 3;
 
 -- K-Nearest Neighbors (KNN) search
 WITH [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] AS query_vector
 MATCH (d:Document)
-WHERE euclideanDistance(d.embedding, query_vector) < 0.5
-RETURN d.title, euclideanDistance(d.embedding, query_vector) AS distance
+WHERE vector_l2(vectorf32(d.embedding), vectorf32(query_vector)) < 0.5
+RETURN d.title, vector_l2(vectorf32(d.embedding), vectorf32(query_vector)) AS distance
 ORDER BY distance;
 
 -- Approximate nearest neighbor with threshold
 WITH [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] AS query_vector
 MATCH (d:Document)
-WHERE cosineSimilarity(d.embedding, query_vector) > 0.9
+WHERE vector_cosine(vectorf32(d.embedding), vectorf32(query_vector)) > 0.9
 RETURN d.title;
 
 -- Explain vector search
 EXPLAIN
 WITH [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] AS query_vector
 MATCH (d:Document)
-RETURN d.title, euclideanDistance(d.embedding, query_vector) AS distance
+RETURN d.title, vector_l2(vectorf32(d.embedding), vectorf32(query_vector)) AS distance
 ORDER BY distance
 LIMIT 3;

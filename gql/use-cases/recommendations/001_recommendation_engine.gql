@@ -74,6 +74,7 @@ RETURN
     p2.name AS also_bought,
     p2.category AS category,
     COUNT(DISTINCT u) AS co_purchase_count
+GROUP BY p2.name, p2.category
 ORDER BY co_purchase_count DESC
 LIMIT 5;
 
@@ -118,6 +119,7 @@ RETURN
     product.name AS trending_product,
     product.category AS category,
     COUNT(DISTINCT u) AS buyer_count
+GROUP BY product.name, product.category
 ORDER BY buyer_count DESC
 LIMIT 5;
 
@@ -143,6 +145,7 @@ RETURN
     product.name AS recommendation,
     product.category AS category,
     COUNT(DISTINCT similar) AS segment_popularity
+GROUP BY product.name, product.category
 ORDER BY segment_popularity DESC
 LIMIT 5;
 
@@ -153,6 +156,7 @@ RETURN
     p1.name AS product1,
     p2.name AS product2,
     COUNT(DISTINCT u) AS bundle_count
+GROUP BY p1.name, p2.name
 ORDER BY bundle_count DESC
 LIMIT 5;
 
@@ -163,5 +167,6 @@ MATCH (u)-[:PURCHASED]->(b:Product {category: 'Books'})
 RETURN
     b.name AS book_recommendation,
     COUNT(DISTINCT u) AS electronics_buyers_who_bought
+GROUP BY b.name
 ORDER BY electronics_buyers_who_bought DESC
 LIMIT 5;

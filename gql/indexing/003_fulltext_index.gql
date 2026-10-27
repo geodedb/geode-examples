@@ -37,10 +37,8 @@ WHERE a.content CONTAINS 'graph database'
 RETURN a.title, a.content;
 
 -- Full-text search with ranking (BM25 score)
-MATCH (a:Article)
-WHERE a.content CONTAINS 'query'
-RETURN a.title, score(a) AS relevance
-ORDER BY relevance DESC;
+-- The procedure returns matching node ids and BM25 scores in ranked order.
+CALL geode.fts.search('article_content_fulltext', 'query') YIELD node, score;
 
 -- Multi-term search
 MATCH (a:Article)

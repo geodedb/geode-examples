@@ -101,6 +101,7 @@ OPTIONAL MATCH (p)-[:KNOWS]-(friend:Person)
 RETURN
     p.name AS person,
     COUNT(DISTINCT friend) AS friend_count
+GROUP BY p.name
 ORDER BY friend_count DESC;
 
 -- 6. Find people within N degrees
@@ -115,6 +116,7 @@ WHERE other <> alice
 RETURN
     other.name AS person,
     COUNT(common) AS shared_friends
+GROUP BY other.name
 ORDER BY shared_friends DESC;
 
 -- 8. Network clustering - find tightly connected groups

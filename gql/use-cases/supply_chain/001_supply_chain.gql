@@ -133,6 +133,7 @@ RETURN
     p.name AS product,
     SUM(st.quantity) AS total_inventory,
     COUNT(w) AS warehouse_count
+GROUP BY p.name
 ORDER BY total_inventory DESC;
 
 -- 7. Distribution Network: Warehouse to DC flow
@@ -143,6 +144,7 @@ RETURN
     dc.name AS distribution_center,
     ship.transit_days AS transit_time,
     SUM(st.quantity) AS total_stock
+GROUP BY w.name, dc.name, ship.transit_days
 ORDER BY transit_time;
 
 -- 8. Supplier Risk: Single-source components

@@ -64,4 +64,5 @@ RETURN
     p.name,
     COUNT(friend) AS friend_count,
     AVG(friend.age) AS avg_friend_age
+GROUP BY p.name
 ORDER BY friend_count DESC;
