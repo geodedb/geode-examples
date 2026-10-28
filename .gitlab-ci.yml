@@ -13,8 +13,8 @@ workflow:
     when: never
   - if: $CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS
     when: never
-  # Stop redundant validation after a required failure on MRs/feature branches.
-  # Keep default-branch and tag publication behavior unchanged.
+  # Required failures stop remaining jobs in every pipeline source.
+  # Publication still uses the existing job selection rules.
   - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     auto_cancel:
       on_job_failure: all
@@ -24,6 +24,7 @@ workflow:
   - when: always
 
   auto_cancel:
+    on_job_failure: all
     on_new_commit: interruptible
 stages:
 - test-gql
