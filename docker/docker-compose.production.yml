@@ -98,7 +98,7 @@ services:
 
   # Prometheus for production metrics
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     container_name: geode-production-prometheus
     security_opt:
       - no-new-privileges:true
