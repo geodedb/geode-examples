@@ -1,6 +1,6 @@
 module geode-examples/blog-posts/building-social-network/go
 
-go 1.27.3
+go 1.27.4
 
 require geodedb.com/geode v0.2.1
 
