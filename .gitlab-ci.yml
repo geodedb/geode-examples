@@ -81,7 +81,7 @@ check:query-runner:
   dependencies: []
 test:client:go:
   stage: test-clients
-  image: golang:1.27.3
+  image: golang:1.27.4
   script:
   - make test-client-go
   artifacts:
