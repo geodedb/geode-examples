@@ -2,7 +2,7 @@
 # uses a fixed container name, or mounts the job checkout on the host daemon.
 services:
   geode:
-    image: ${GEODE_IMAGE:-geodedb/geode:latest@sha256:48a24f3739bda9017536cdd7b9b0c14474d0cc643d0b202560465d3834b9587a}
+    image: ${GEODE_IMAGE:-geodedb/geode:latest@sha256:2c5a9b856ab7ba4b12e6bc88786a663c3321270eec308bde5f8f9028fa69bb85}
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     volumes: [geode-data:/data]

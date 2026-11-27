@@ -41,7 +41,7 @@ variables:
   GIT_DEPTH: '1'
   GOMAXPROCS: '2'
 default:
-  image: docker:29.9
+  image: docker:29.10
   tags:
   - company
   - dedicated
@@ -126,7 +126,7 @@ test:client:python:
   dependencies: []
 test:client:rust:
   stage: test-clients
-  image: rust:1.99
+  image: rust:1.100
   script:
   - make test-client-rust
   artifacts:

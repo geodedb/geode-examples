@@ -150,7 +150,7 @@ services:
 
   # Kafka for CDC tests
   kafka:
-    image: confluentinc/cp-kafka:8.4.0
+    image: confluentinc/cp-kafka:8.4.1
     container_name: geode-test-kafka
     security_opt:
       - no-new-privileges:true
